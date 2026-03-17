@@ -1,0 +1,4 @@
+sreamlit
+yfinace
+numpy
+pandas
