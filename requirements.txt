@@ -1,4 +1,4 @@
-sreamlit
+streamlit
 yfinace
 numpy
 pandas
