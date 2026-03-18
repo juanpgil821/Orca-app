@@ -2,141 +2,121 @@ import streamlit as st
 import yfinance as yf
 import numpy as np
 import pandas as pd
+import requests
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="ORCA Terminal", page_icon="🐋", layout="wide")
 
-# Diseño visual (Modo Oscuro Profesional)
+# Estilo visual
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: white; }
     div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #00d4ff; }
-    .stProgress .st-bo { background-color: #00d4ff; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE SOPORTE (Tus Celdas) ---
-def get_row(df, names):
-    if df is None or df.empty: return None
-    for n in names:
-        if n in df.index: return df.loc[n]
-    return None
-
-def scale(value, min_val, max_val):
-    if value is None or np.isnan(value): return 0
-    score = max(0, min((value - min_val) / (max_val - min_val), 1))
-    return score * 100
-
+# --- FUNCIÓN DE DESCARGA ROBUSTA ---
 @st.cache_data(ttl=3600)
 def fetch_orca_data(symbol):
     try:
-        ticker = yf.Ticker(symbol)
-        # Intentamos obtener info básica primero
-        info = ticker.info
+        # Usamos una sesión con un "User-Agent" de navegador real
+        session = requests.Session()
+        session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'})
         
-        # FIX: Si 'info' falla o viene vacío (bloqueo común en la nube)
-        if not info or 'currentPrice' not in info:
-            hist_recent = ticker.history(period="5d")
-            if hist_recent.empty: return None
-            price = hist_recent['Close'].iloc[-1]
-            name = symbol
-        else:
-            price = info.get("currentPrice")
-            name = info.get("shortName", symbol)
-
-        # Extraer Financieros para FCF y Quality Score
+        ticker = yf.Ticker(symbol, session=session)
+        
+        # Intentamos obtener el precio de varias formas
+        info = ticker.info
+        hist_1d = ticker.history(period="1d")
+        
+        if hist_1d.empty and (not info or 'currentPrice' not in info):
+            return None
+            
+        price = info.get("currentPrice") if info and 'currentPrice' in info else hist_1d['Close'].iloc[-1]
+        name = info.get("shortName", symbol) if info else symbol
+        
+        # Obtener fundamentales
         financials = ticker.financials
         cashflow = ticker.cashflow
         hist_5y = ticker.history(period="5y")
 
-        # --- LÓGICA CALIDAD (Celda 11) ---
-        def calculate_qs():
-            roe = info.get("returnOnEquity", 0.1)
-            margin = info.get("operatingMargins", 0.1)
-            debt = info.get("debtToEquity", 100) / 100
-            
-            s1 = scale(roe, 0, 0.3) * 0.4
-            s2 = scale(margin, 0, 0.3) * 0.4
-            s3 = scale(3 - debt, 0, 3) * 0.2
-            return round(s1 + s2 + s3, 2)
-
-        qs = calculate_qs()
-
-        # --- LÓGICA VALOR INTRÍNSECO (Celda 5, 7 y 13) ---
-        shares = info.get("sharesOutstanding")
-        if not shares:
-            # Si no hay shares en info, no podemos calcular por acción
-            return {"name": name, "price": price, "qs": qs, "error": "No shares data"}
-
-        # FCF Simplificado para la App
-        ocf = get_row(cashflow, ["Operating Cash Flow", "Total Cash From Operating Activities"])
-        capex = get_row(cashflow, ["Capital Expenditure", "Capital Expenditures"])
+        # --- LÓGICA QUALITY SCORE (Celda 11) ---
+        roe = info.get("returnOnEquity", 0.1) if info else 0.1
+        margin = info.get("operatingMargins", 0.1) if info else 0.1
+        debt = (info.get("debtToEquity", 100) / 100) if info else 1.0
         
-        if ocf is not None and capex is not None:
-            fcf_ttm = ocf.iloc[0] + capex.iloc[0]
-            # Modelo DCF rápido (Celda 7)
-            growth = 1.05 # 5% conservador
-            discount = 0.15
-            pv = sum([(fcf_ttm * (growth**t)) / ((1+discount)**t) for t in range(1, 6)])
-            intrinsic = (pv + (fcf_ttm * 15)) / shares # Terminal value simplificado
-        else:
-            intrinsic = price * 0.8 # Fallback si no hay cashflow
+        def scale_val(v, mi, ma):
+            return max(0, min((v - mi) / (ma - mi), 1)) * 100
+
+        qs = round((scale_val(roe, 0, 0.3)*0.4 + scale_val(margin, 0, 0.3)*0.4 + scale_val(3-debt, 0, 3)*0.2), 2)
+
+        # --- LÓGICA VALOR INTRÍNSECO (Simplificada para estabilidad) ---
+        shares = info.get("sharesOutstanding") if info else None
+        
+        # Si no hay flujos de caja o acciones, hacemos una estimación basada en múltiplos
+        intrinsic_base = price * 1.2 
+        
+        if shares and not cashflow.empty:
+            try:
+                # Intentamos buscar OCF y CapEx
+                ocf = None
+                for k in ["Operating Cash Flow", "Total Cash From Operating Activities"]:
+                    if k in cashflow.index: ocf = cashflow.loc[k].iloc[0]; break
+                
+                capex = None
+                for k in ["Capital Expenditure", "Capital Expenditures"]:
+                    if k in cashflow.index: capex = cashflow.loc[k].iloc[0]; break
+                
+                if ocf is not None and capex is not None:
+                    fcf = ocf + capex
+                    # DCF a 5 años
+                    intrinsic_base = ((fcf * 1.05 * 5) + (fcf * 15)) / shares
+            except:
+                pass
 
         return {
             "name": name,
             "price": price,
-            "intrinsic": intrinsic,
+            "intrinsic": intrinsic_base,
             "qs": qs,
             "history": hist_5y,
-            "info": info
+            "info": info if info else {}
         }
-    except:
+    except Exception as e:
         return None
 
 # --- INTERFAZ ---
 st.title("🐋 ORCA: Intrinsic Intelligence")
 
 with st.sidebar:
-    st.header("Terminal de Control")
-    ticker_input = st.text_input("Ticker (ej: AAPL, V, MSFT)", "AAPL").upper()
-    st.markdown("---")
-    st.write("Configuración DCF:")
+    st.header("Control")
+    ticker_input = st.text_input("Ticker", "AAPL").upper()
     disc_rate = st.slider("Tasa Descuento (%)", 5, 20, 15)
+    st.warning("Si da error, espera 10 segundos y vuelve a intentar. Yahoo limita las peticiones.")
 
 if ticker_input:
     data = fetch_orca_data(ticker_input)
     
     if data:
-        # Fila 1: Métricas
         col1, col2, col3 = st.columns(3)
         col1.metric("Precio Actual", f"${data['price']:.2f}")
         
-        # Lógica de Margen de Seguridad según Quality Score (Celda 13)
-        margin = 0.9 if data['qs'] > 80 else 0.7
-        val_final = data['intrinsic'] * margin
+        # Margen de seguridad dinámico
+        margin_adj = 0.9 if data['qs'] > 75 else 0.75
+        val_final = data['intrinsic'] * margin_adj
         upside = ((val_final / data['price']) - 1) * 100
         
-        col2.metric("Valor Intrínseco (Adj)", f"${val_final:.2f}", f"{upside:.2f}%")
+        col2.metric("Valor Intrínseco", f"${val_final:.2f}", f"{upside:.2f}%")
         
         if upside > 10:
-            status, color = "COMPRA (BUY)", "#00ff88"
-        elif upside < -10:
-            status, color = "VENTA (SELL)", "#ff4b4b"
-        else:
-            status, color = "MANTENER (HOLD)", "#ffaa00"
+            status, color = "COMPRA", "#00ff88"
+        elif upside < -10: status, color = "VENTA", "#ff4b4b"
+        else: status, color = "HOLD", "#ffaa00"
             
         col3.markdown(f"<h3 style='text-align:center;'>Señal:<br><span style='color:{color}'>{status}</span></h3>", unsafe_allow_html=True)
 
-        # Fila 2: Quality Score
-        st.write(f"**Calidad del Negocio (ORCA Quality Score): {data['qs']}/100**")
+        st.write(f"**ORCA Quality Score: {data['qs']}/100**")
         st.progress(data['qs'] / 100)
-
-        # Fila 3: Gráfico
-        st.subheader("Histórico de Precios")
         st.area_chart(data['history']['Close'])
-        
-        with st.expander("Ver Análisis Detallado"):
-            st.write(f"Empresa: {data['name']}")
-            st.write(data['info'].get('longBusinessSummary', 'Sin descripción.'))
     else:
-        st.error(f"Error: Yahoo Finance no responde para {ticker_input}. Intenta con otro ticker o reinicia la app.")
+        st.error(f"Yahoo Finance bloqueó la conexión para {ticker_input}. Esto es normal en servidores gratuitos. Intenta de nuevo en unos segundos.")
