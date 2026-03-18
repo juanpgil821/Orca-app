@@ -4,128 +4,139 @@ import numpy as np
 import pandas as pd
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="ORCA System", page_icon="🐋", layout="wide")
+st.set_page_config(page_title="ORCA Terminal", page_icon="🐋", layout="wide")
 
-# Estilo CSS para que se vea más profesional
+# Diseño visual (Modo Oscuro Profesional)
 st.markdown("""
     <style>
-    .main { background-color: #0e1117; }
-    .stMetric { background-color: #1e2130; padding: 15px; border-radius: 10px; }
+    .main { background-color: #0e1117; color: white; }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #00d4ff; }
+    .stProgress .st-bo { background-color: #00d4ff; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNCIONES DE LÓGICA (Tus Celdas) ---
-
+# --- FUNCIONES DE SOPORTE (Tus Celdas) ---
 def get_row(df, names):
+    if df is None or df.empty: return None
     for n in names:
         if n in df.index: return df.loc[n]
     return None
 
 def scale(value, min_val, max_val):
-    if value is None: return None
+    if value is None or np.isnan(value): return 0
     score = max(0, min((value - min_val) / (max_val - min_val), 1))
     return score * 100
 
-@st.cache_data(ttl=3600) # Cache para no saturar Yahoo Finance
-def calculate_orca_metrics(symbol):
-    stock = yf.Ticker(symbol)
-    info = stock.info
-    hist = stock.history(period="5y")
-    financials = stock.financials
-    cashflow = stock.cashflow
-    
-    # --- Lógica Celda 5 (FCF Growth) ---
-    ocf_row = get_row(cashflow, ["Total Cash From Operating Activities", "Operating Cash Flow"])
-    capex_row = get_row(cashflow, ["Capital Expenditures", "Capital Expenditure"])
-    
-    fcf_growth = 0.05 # Default
-    if ocf_row is not None and capex_row is not None:
-        fcf_hist = ocf_row + capex_row # Capex suele ser negativo en yf
-        fcf_hist = fcf_hist.dropna()
-        if len(fcf_hist) > 1:
-            start, end = fcf_hist.iloc[-1], fcf_hist.iloc[0]
-            if start > 0 and end > 0:
-                fcf_growth = (end / start) ** (1 / (len(fcf_hist)-1)) - 1
-    
-    # --- Lógica Celda 11 (Quality Score) ---
-    def get_qs():
-        fs = np.mean([scale(3 - (info.get("debtToEquity", 100)/100), 0, 3), scale(info.get("currentRatio", 1), 0.5, 3)])
-        pr = np.mean([scale(info.get("returnOnEquity", 0.1), 0, 0.3), scale(info.get("operatingMargins", 0.1), 0, 0.3)])
-        gr = np.mean([scale(info.get("revenueGrowth", 0.05), -0.1, 0.3), scale(info.get("earningsGrowth", 0.05), -0.1, 0.3)])
-        return round(np.nanmean([fs*0.4, pr*0.4, gr*0.2]) * 10, 2)
-
-    qs = get_qs()
-    
-    # --- Lógica Celda 13 (Intrinsic Value) ---
-    price = info.get("currentPrice")
-    shares = info.get("sharesOutstanding")
-    fcf_ttm = (ocf_row.iloc[0] + capex_row.iloc[0]) if ocf_row is not None else 0
-    
-    # DCF Simplificado (Celda 7)
-    discount_rate = 0.15
-    multiplier = 1 + max(0.0, min(fcf_growth, 0.10))
-    pfcf = price / (fcf_ttm / shares) if fcf_ttm and shares else 15
-    
-    pv_fcfs = sum([fcf_ttm * (multiplier ** t) / ((1 + discount_rate) ** t) for t in range(1, 6)])
-    terminal_v = (fcf_ttm * (multiplier ** 5) * pfcf) / ((1 + discount_rate) ** 5)
-    intrinsic = (pv_fcfs + terminal_v) / shares
-    
-    # Ajuste por Margen de Seguridad (Celda 13)
-    margin = 0.90 if qs > 80 else 0.70
-    final_intrinsic = intrinsic * margin
-    
-    return {
-        "price": price,
-        "intrinsic": final_intrinsic,
-        "qs": qs,
-        "info": info,
-        "history": hist
-    }
-
-# --- INTERFAZ DE LA APP ---
-
-st.title("🐋 ORCA System: Terminal Financiera")
-
-# Sidebar para búsqueda
-with st.sidebar:
-    st.header("Buscador")
-    target = st.text_input("Ticker de la empresa", "AAPL").upper()
-    st.info("Introduce un ticker de Yahoo Finance (ej: MSFT, TSLA, GOOGL)")
-
-if target:
+@st.cache_data(ttl=3600)
+def fetch_orca_data(symbol):
     try:
-        with st.spinner(f"Ejecutando algoritmos ORCA para {target}..."):
-            data = calculate_orca_metrics(target)
-            
-            # --- FILA 1: MÉTRICAS CLAVE ---
-            col1, col2, col3 = st.columns(3)
-            
-            diff = ((data['intrinsic'] / data['price']) - 1) * 100
-            
-            col1.metric("Precio Actual", f"${data['price']:.2f}")
-            col2.metric("Valor Intrínseco ORCA", f"${data['intrinsic']:.2f}", f"{diff:.2f}%")
-            
-            # Señal Visual
-            if diff > 10:
-                signal, color = "BUY", "green"
-            elif diff < -10:
-                signal, color = "SELL", "red"
-            else:
-                signal, color = "HOLD", "orange"
-            
-            col3.markdown(f"### Señal: <span style='color:{color}'>{signal}</span>", unsafe_allow_html=True)
+        ticker = yf.Ticker(symbol)
+        # Intentamos obtener info básica primero
+        info = ticker.info
+        
+        # FIX: Si 'info' falla o viene vacío (bloqueo común en la nube)
+        if not info or 'currentPrice' not in info:
+            hist_recent = ticker.history(period="5d")
+            if hist_recent.empty: return None
+            price = hist_recent['Close'].iloc[-1]
+            name = symbol
+        else:
+            price = info.get("currentPrice")
+            name = info.get("shortName", symbol)
 
-            # --- FILA 2: QUALITY SCORE ---
-            st.subheader(f"Calidad del Negocio (Quality Score: {data['qs']}/100)")
-            st.progress(data['qs'] / 100)
+        # Extraer Financieros para FCF y Quality Score
+        financials = ticker.financials
+        cashflow = ticker.cashflow
+        hist_5y = ticker.history(period="5y")
 
-            # --- FILA 3: GRÁFICO ---
-            st.subheader("Evolución de Precio (5 años)")
-            st.line_chart(data['history']['Close'])
+        # --- LÓGICA CALIDAD (Celda 11) ---
+        def calculate_qs():
+            roe = info.get("returnOnEquity", 0.1)
+            margin = info.get("operatingMargins", 0.1)
+            debt = info.get("debtToEquity", 100) / 100
+            
+            s1 = scale(roe, 0, 0.3) * 0.4
+            s2 = scale(margin, 0, 0.3) * 0.4
+            s3 = scale(3 - debt, 0, 3) * 0.2
+            return round(s1 + s2 + s3, 2)
 
-            # --- FILA 4: DATOS ADICIONALES ---
-            with st.expander("Ver detalles técnicos de la empresa"):
-                st.write(data['info'].get('longBusinessSummary', 'No hay descripción disponible.'))
+        qs = calculate_qs()
 
-    except Exception as e:
-        st.error(f"No pudimos encontrar datos para {target}. Verifica el ticker.")
+        # --- LÓGICA VALOR INTRÍNSECO (Celda 5, 7 y 13) ---
+        shares = info.get("sharesOutstanding")
+        if not shares:
+            # Si no hay shares en info, no podemos calcular por acción
+            return {"name": name, "price": price, "qs": qs, "error": "No shares data"}
+
+        # FCF Simplificado para la App
+        ocf = get_row(cashflow, ["Operating Cash Flow", "Total Cash From Operating Activities"])
+        capex = get_row(cashflow, ["Capital Expenditure", "Capital Expenditures"])
+        
+        if ocf is not None and capex is not None:
+            fcf_ttm = ocf.iloc[0] + capex.iloc[0]
+            # Modelo DCF rápido (Celda 7)
+            growth = 1.05 # 5% conservador
+            discount = 0.15
+            pv = sum([(fcf_ttm * (growth**t)) / ((1+discount)**t) for t in range(1, 6)])
+            intrinsic = (pv + (fcf_ttm * 15)) / shares # Terminal value simplificado
+        else:
+            intrinsic = price * 0.8 # Fallback si no hay cashflow
+
+        return {
+            "name": name,
+            "price": price,
+            "intrinsic": intrinsic,
+            "qs": qs,
+            "history": hist_5y,
+            "info": info
+        }
+    except:
+        return None
+
+# --- INTERFAZ ---
+st.title("🐋 ORCA: Intrinsic Intelligence")
+
+with st.sidebar:
+    st.header("Terminal de Control")
+    ticker_input = st.text_input("Ticker (ej: AAPL, V, MSFT)", "AAPL").upper()
+    st.markdown("---")
+    st.write("Configuración DCF:")
+    disc_rate = st.slider("Tasa Descuento (%)", 5, 20, 15)
+
+if ticker_input:
+    data = fetch_orca_data(ticker_input)
+    
+    if data:
+        # Fila 1: Métricas
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Precio Actual", f"${data['price']:.2f}")
+        
+        # Lógica de Margen de Seguridad según Quality Score (Celda 13)
+        margin = 0.9 if data['qs'] > 80 else 0.7
+        val_final = data['intrinsic'] * margin
+        upside = ((val_final / data['price']) - 1) * 100
+        
+        col2.metric("Valor Intrínseco (Adj)", f"${val_final:.2f}", f"{upside:.2f}%")
+        
+        if upside > 10:
+            status, color = "COMPRA (BUY)", "#00ff88"
+        elif upside < -10:
+            status, color = "VENTA (SELL)", "#ff4b4b"
+        else:
+            status, color = "MANTENER (HOLD)", "#ffaa00"
+            
+        col3.markdown(f"<h3 style='text-align:center;'>Señal:<br><span style='color:{color}'>{status}</span></h3>", unsafe_allow_html=True)
+
+        # Fila 2: Quality Score
+        st.write(f"**Calidad del Negocio (ORCA Quality Score): {data['qs']}/100**")
+        st.progress(data['qs'] / 100)
+
+        # Fila 3: Gráfico
+        st.subheader("Histórico de Precios")
+        st.area_chart(data['history']['Close'])
+        
+        with st.expander("Ver Análisis Detallado"):
+            st.write(f"Empresa: {data['name']}")
+            st.write(data['info'].get('longBusinessSummary', 'Sin descripción.'))
+    else:
+        st.error(f"Error: Yahoo Finance no responde para {ticker_input}. Intenta con otro ticker o reinicia la app.")
