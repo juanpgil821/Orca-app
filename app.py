@@ -17,24 +17,31 @@ st.markdown("""
 
 # --- FUNCIONES DE APOYO ---
 def scale(value, min_val, max_val):
-    if value is None or np.isnan(value): return 0
+    if value is None or np.isnan(value):
+        return 0
     score = max(0, min((value - min_val) / (max_val - min_val), 1))
     return score * 100
 
+def safe_float(value, default=0):
+    try:
+        if value in [None, "", "None"]:
+            return default
+        return float(value)
+    except:
+        return default
+
 def fetch_data(symbol):
-    # 1. Obtener Precio y Datos en tiempo real
     url_quote = f'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={API_KEY}'
-    # 2. Obtener Estados Financieros (para FCF y Quality Score)
     url_cash = f'https://www.alphavantage.co/query?function=CASH_FLOW&symbol={symbol}&apikey={API_KEY}'
     url_overview = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={symbol}&apikey={API_KEY}'
     
     try:
-        quote = requests.get(url_quote).json()["Global Quote"]
+        quote = requests.get(url_quote).json().get("Global Quote", {})
         overview = requests.get(url_overview).json()
         cash = requests.get(url_cash).json()
         
         return {
-            "price": float(quote["05. price"]),
+            "price": safe_float(quote.get("05. price")),
             "overview": overview,
             "cashflow": cash.get("annualReports", []),
             "name": overview.get("Name", symbol)
@@ -60,58 +67,64 @@ if ticker:
             ov = data['overview']
             cf = data['cashflow']
             
-            # --- LÓGICA QUALITY SCORE (Celda 11) ---
-           def safe_float(value, default=0):
-    try:
-        if value in [None, "", "None"]:
-            return default
-        return float(value)
-    except:
-        return default
-
-roe = safe_float(ov.get("ReturnOnEquityTTM") or ov.get("ReturnOnEquity"), 0)
-margin = safe_float(ov.get("OperatingMarginTTM") or ov.get("OperatingMargin"), 0)
-            debt = safe_float(ov.get("DebtToEquity"), 0) # Simplificación si no hay D/E
-            debt = safe_float(ov.get("DebtToEquity"), 0) # Simplificación si no hay D/E
+            # --- QUALITY SCORE (FIXED) ---
+            roe = safe_float(ov.get("ReturnOnEquityTTM") or ov.get("ReturnOnEquity"))
+            margin = safe_float(ov.get("OperatingMarginTTM") or ov.get("OperatingMargin"))
             
-            qs = round((scale(roe, 0, 0.3)*0.4 + scale(margin, 0, 0.3)*0.4 + 50*0.2), 2)
+            qs = round(
+                (scale(roe, 0, 0.3) * 0.4 +
+                 scale(margin, 0, 0.3) * 0.4 +
+                 50 * 0.2),
+                2
+            )
 
-            # --- LÓGICA VALOR INTRÍNSECO (Celda 5, 7 y 13) ---
-            intrinsic = price * 1.10 # Fallback
+            # --- VALOR INTRÍNSECO ---
+            intrinsic = price * 1.10 # fallback
             
             if cf:
-                # Tomamos el último reporte anual
                 last_report = cf[0]
-                ocf = float(last_report.get("operatingCashflow", 0))
-                capex = abs(float(last_report.get("capitalExpenditures", 0)))
+                ocf = safe_float(last_report.get("operatingCashflow"))
+                capex = abs(safe_float(last_report.get("capitalExpenditures")))
                 fcf = ocf - capex
-                shares = float(ov.get("SharesOutstanding", 1))
+                shares = safe_float(ov.get("SharesOutstanding"), 1)
                 
                 if shares > 1:
-                    # DCF simplificado a 5 años (Celda 7)
-                    growth = 1.07 # 7% estimado
-                    pv = sum([(fcf * (growth**t)) / ((1+disc_rate)**t) for t in range(1, 6)])
-                    intrinsic = (pv + (fcf * 15)) / shares 
+                    growth = 1.07
+                    pv = sum([
+                        (fcf * (growth ** t)) / ((1 + disc_rate) ** t)
+                        for t in range(1, 6)
+                    ])
+                    intrinsic = (pv + (fcf * 15)) / shares
 
-            # --- MOSTRAR RESULTADOS ---
+            # --- RESULTADOS ---
             col1, col2, col3 = st.columns(3)
             col1.metric("Precio Mercado", f"${price:.2f}")
             
-            # Margen de seguridad según QS (Celda 13)
             margin_safety = 0.9 if qs > 75 else 0.75
             final_val = intrinsic * margin_safety
             upside = ((final_val / price) - 1) * 100
             
             col2.metric("Valor ORCA (Adj)", f"${final_val:.2f}", f"{upside:.2f}%")
             
-            if upside > 10: status, color = "COMPRA", "#00ff88"
-            elif upside < -10: status, color = "VENTA", "#ff4b4b"
-            else: status, color = "HOLD", "#ffaa00"
+            if upside > 10:
+                status, color = "COMPRA", "#00ff88"
+            elif upside < -10:
+                status, color = "VENTA", "#ff4b4b"
+            else:
+                status, color = "HOLD", "#ffaa00"
             
-            col3.markdown(f"<h3 style='text-align:center;'>Señal:<br><span style='color:{color}'>{status}</span></h3>", unsafe_allow_html=True)
+            col3.markdown(
+                f"<h3 style='text-align:center;'>Señal:<br><span style='color:{color}'>{status}</span></h3>",
+                unsafe_allow_html=True
+            )
             
             st.write(f"**ORCA Quality Score: {qs}/100**")
             st.progress(qs / 100)
+            
+            # DEBUG opcional (puedes borrarlo luego)
+            with st.expander("Debug (Quality Score inputs)"):
+                st.write("ROE:", roe)
+                st.write("Margin:", margin)
             
             with st.expander("Detalles del Negocio"):
                 st.write(ov.get("Description", "No disponible."))
