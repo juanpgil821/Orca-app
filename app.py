@@ -41,7 +41,13 @@ def fetch_data(symbol):
         cash = requests.get(url_cash).json()
         
         return {
-            "price": safe_float(quote.get("05. price")),
+            price_raw = quote.get("05. price")
+
+if not price_raw:
+    return None
+
+return {
+    "price": float(price_raw),
             "overview": overview,
             "cashflow": cash.get("annualReports", []),
             "name": overview.get("Name", symbol)
