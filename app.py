@@ -4,124 +4,116 @@ import pandas as pd
 import numpy as np
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="ORCA Intelligence", page_icon="🐋", layout="wide")
+st.set_page_config(page_title="ORCA Terminal PRO", page_icon="🐋", layout="wide")
 API_KEY = "NGT4JK1SBUWM3G0D"
 
-# Estilo visual avanzado
+# Estilo visual oscuro
 st.markdown("""
     <style>
     .main { background-color: #0e1117; color: white; }
-    .stMetric { border: 1px solid #2e3344; padding: 10px; border-radius: 10px; background-color: #161b22; }
-    div[data-testid="stMetricValue"] { color: #00d4ff; }
+    div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #00d4ff; }
     </style>
     """, unsafe_allow_html=True)
 
-def fetch_all_data(symbol):
-    # Función para llamar a la API con manejo de errores
-    def call_api(function):
-        url = f'https://www.alphavantage.co/query?function={function}&symbol={symbol}&apikey={API_KEY}'
-        response = requests.get(url).json()
-        return response
+# --- FUNCIONES DE APOYO ---
+def scale(value, min_val, max_val):
+    if value is None or np.isnan(value): return 0
+    score = max(0, min((value - min_val) / (max_val - min_val), 1))
+    return score * 100
 
+def fetch_data(symbol):
+    # 1. Obtener Precio y Datos en tiempo real
+    url_quote = f'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={API_KEY}'
+    # 2. Obtener Estados Financieros (para FCF y Quality Score)
+    url_cash = f'https://www.alphavantage.co/query?function=CASH_FLOW&symbol={symbol}&apikey={API_KEY}'
+    url_overview = f'https://www.alphavantage.co/query?function=OVERVIEW&symbol={symbol}&apikey={API_KEY}'
+    
     try:
-        overview = call_api("OVERVIEW")
-        if not overview or "Symbol" not in overview:
-            return None
-            
-        quote = call_api("GLOBAL_QUOTE").get("Global Quote", {})
-        cash = call_api("CASH_FLOW").get("annualReports", [])
+        quote = requests.get(url_quote).json()["Global Quote"]
+        overview = requests.get(url_overview).json()
+        cash = requests.get(url_cash).json()
         
         return {
-            "price": float(quote.get("05. price", 0)) if quote else 0,
-            "ov": overview,
-            "cf": cash,
+            "price": float(quote["05. price"]),
+            "overview": overview,
+            "cashflow": cash.get("annualReports", []),
             "name": overview.get("Name", symbol)
         }
     except:
         return None
 
 # --- INTERFAZ ---
-st.title("🐋 ORCA Terminal | Análisis de Valor")
+st.title("🐋 ORCA: Intrinsic Intelligence (API Mode)")
 
 with st.sidebar:
-    st.header("Configuración")
+    st.header("Control")
     ticker = st.text_input("Ticker", "AAPL").upper()
-    st.markdown("---")
     disc_rate = st.slider("Tasa Descuento (%)", 5, 20, 15) / 100
-    st.info("Nota: Alpha Vantage permite 5 consultas por minuto. Si ves error, espera un poco.")
+    st.info("Plan gratuito: Máximo 5 consultas por minuto.")
 
 if ticker:
-    with st.spinner(f"Analizando {ticker}..."):
-        data = fetch_all_data(ticker)
+    with st.spinner(f"Calculando modelo ORCA para {ticker}..."):
+        data = fetch_data(ticker)
         
-        if data and data['price'] > 0:
-            ov = data['ov']
+        if data:
             price = data['price']
+            ov = data['overview']
+            cf = data['cashflow']
             
-            # --- SOLUCIÓN ERROR 1: QUALITY SCORE DINÁMICO ---
-            # Extraemos datos reales o usamos 0 si no existen
-            roe = float(ov.get("ReturnOnEquityTTM", 0))
-            margin = float(ov.get("OperatingMarginTTM", 0))
-            div_yield = float(ov.get("DividendYield", 0))
-            per = float(ov.get("PERatio", 0))
-            
-            # Cálculo de Score (Escalado real)
-            s_roe = min(roe / 0.30, 1) * 40 # 40 pts max si ROE > 30%
-            s_mar = min(margin / 0.30, 1) * 40 # 40 pts max si Margen > 30%
-            s_per = 20 if 0 < per < 25 else 10 # 20 pts si el PER es razonable
-            
-            qs = round(s_roe + s_mar + s_per, 2)
+            # --- LÓGICA QUALITY SCORE (Celda 11) ---
+           def safe_float(value, default=0):
+    try:
+        if value in [None, "", "None"]:
+            return default
+        return float(value)
+    except:
+        return default
 
-            # --- CÁLCULO VALOR INTRÍNSECO (Fórmula ORCA) ---
-            shares = float(ov.get("SharesOutstanding", 1))
-            intrinsic = price # Fallback
+roe = safe_float(ov.get("ReturnOnEquityTTM") or ov.get("ReturnOnEquity"), 0)
+margin = safe_float(ov.get("OperatingMarginTTM") or ov.get("OperatingMargin"), 0)
+            debt = safe_float(ov.get("DebtToEquity"), 0) # Simplificación si no hay D/E
+            debt = safe_float(ov.get("DebtToEquity"), 0) # Simplificación si no hay D/E
             
-            if data['cf']:
-                last_fcf = float(data['cf'][0].get("operatingCashflow", 0)) - abs(float(data['cf'][0].get("capitalExpenditures", 0)))
-                # DCF proyectado
-                proyectado = sum([(last_fcf * (1.05**t)) / ((1 + disc_rate)**t) for t in range(1, 6)])
-                intrinsic = (proyectado + (last_fcf * 15)) / shares
+            qs = round((scale(roe, 0, 0.3)*0.4 + scale(margin, 0, 0.3)*0.4 + 50*0.2), 2)
 
-            # --- VISUALIZACIÓN ---
+            # --- LÓGICA VALOR INTRÍNSECO (Celda 5, 7 y 13) ---
+            intrinsic = price * 1.10 # Fallback
+            
+            if cf:
+                # Tomamos el último reporte anual
+                last_report = cf[0]
+                ocf = float(last_report.get("operatingCashflow", 0))
+                capex = abs(float(last_report.get("capitalExpenditures", 0)))
+                fcf = ocf - capex
+                shares = float(ov.get("SharesOutstanding", 1))
+                
+                if shares > 1:
+                    # DCF simplificado a 5 años (Celda 7)
+                    growth = 1.07 # 7% estimado
+                    pv = sum([(fcf * (growth**t)) / ((1+disc_rate)**t) for t in range(1, 6)])
+                    intrinsic = (pv + (fcf * 15)) / shares 
+
+            # --- MOSTRAR RESULTADOS ---
             col1, col2, col3 = st.columns(3)
+            col1.metric("Precio Mercado", f"${price:.2f}")
             
-            margin_safety = 0.9 if qs > 80 else 0.75
-            val_adj = intrinsic * margin_safety
-            upside = ((val_adj / price) - 1) * 100
+            # Margen de seguridad según QS (Celda 13)
+            margin_safety = 0.9 if qs > 75 else 0.75
+            final_val = intrinsic * margin_safety
+            upside = ((final_val / price) - 1) * 100
             
-            col1.metric("Precio Actual", f"${price:,.2f}")
-            col2.metric("Valor ORCA (Adj)", f"${val_adj:,.2f}", f"{upside:.2f}%")
+            col2.metric("Valor ORCA (Adj)", f"${final_val:.2f}", f"{upside:.2f}%")
             
-            if upside > 15: sig, col = "COMPRA FUERTE", "#00ff88"
-            elif upside > 0: sig, col = "COMPRA / HOLD", "#00d4ff"
-            else: sig, col = "SOBREVALORADA", "#ff4b4b"
+            if upside > 10: status, color = "COMPRA", "#00ff88"
+            elif upside < -10: status, color = "VENTA", "#ff4b4b"
+            else: status, color = "HOLD", "#ffaa00"
             
-            col3.markdown(f"<div style='text-align:center; padding:10px; border-radius:10px; border:2px solid {col};'>"
-                         f"Señal:<br><span style='color:{col}; font-size:20px; font-weight:bold;'>{sig}</span></div>", 
-                         unsafe_allow_html=True)
-
-            # Dashboard de Calidad
-            st.markdown("---")
-            c_a, c_b = st.columns([1, 2])
-            with c_a:
-                st.subheader("Calidad del Negocio")
-                st.metric("Quality Score", f"{qs}/100")
-                st.progress(qs / 100)
+            col3.markdown(f"<h3 style='text-align:center;'>Señal:<br><span style='color:{color}'>{status}</span></h3>", unsafe_allow_html=True)
             
-            with c_b:
-                st.subheader("Ratios Clave")
-                r1, r2, r3 = st.columns(3)
-                r1.write(f"**ROE:** {roe*100:.2f}%")
-                r2.write(f"**Márgen Op:** {margin*100:.2f}%")
-                r3.write(f"**P/E Ratio:** {per:.2f}")
-
-            # --- SOLUCIÓN ERROR 2: DETALLES DEL NEGOCIO ---
-            st.markdown("---")
-            with st.expander("📖 Descripción Detallada de la Empresa", expanded=True):
-                desc = ov.get("Description", "No hay descripción disponible para este ticker en Alpha Vantage.")
-                st.write(f"**{data['name']}**")
-                st.write(desc)
-                st.caption(f"Sector: {ov.get('Sector')} | Industria: {ov.get('Industry')}")
-
+            st.write(f"**ORCA Quality Score: {qs}/100**")
+            st.progress(qs / 100)
+            
+            with st.expander("Detalles del Negocio"):
+                st.write(ov.get("Description", "No disponible."))
         else:
-            st.warning("⚠️ Sin datos. Posibles causas: 1. Límite de 5 consultas/min alcanzado. 2. Ticker incorrecto. 3. Alpha Vantage no tiene este ticker.")
+            st.error("No se pudieron obtener datos. Revisa el ticker o espera 1 minuto (límite de API).")
