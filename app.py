@@ -40,7 +40,6 @@ def fetch_data(symbol):
         overview = requests.get(url_overview).json()
         cash = requests.get(url_cash).json()
         
-        return {
             price_raw = quote.get("05. price")
 
 if not price_raw:
