@@ -23,7 +23,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, mos=0.25):
     price = info.get("currentPrice")
     shares = info.get("sharesOutstanding")
     
-    # --- FCF Growth (Celda 5) ---
+    # --- FCF Growth ---
     cf = stock.cashflow
     growth = None
     if cf is not None and not cf.empty:
@@ -44,29 +44,33 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, mos=0.25):
         if op_q is not None and cap_q is not None:
             fcf_ttm = op_q.iloc[:4].sum() + cap_q.iloc[:4].sum()
 
-    # --- DCF (Celda 7) ---
+    # --- DCF ---
     intrinsic_dcf = None
+    multiplier = None
+    pfcf_used = None
+
     if fcf_ttm and growth is not None and shares:
         g_capped = max(0.0, min(growth, 0.10))
-        m = 1 + g_capped
-        pfcf = price / (fcf_ttm / shares)
-        pv = sum([fcf_ttm * (m**t) / ((1+discount_rate)**t) for t in range(1, 6)])
-        tv = (fcf_ttm * (m**5) * pfcf) / ((1+discount_rate)**5)
-        intrinsic_dcf = (pv + tv) / shares
+        multiplier = 1 + g_capped
+        pfcf_used = price / (fcf_ttm / shares) if (fcf_ttm/shares) != 0 else 0
+        
+        pv = sum([fcf_ttm * (multiplier ** t) / ((1 + discount_rate) ** t) for t in range(1, 6)])
+        terminal_value = (fcf_ttm * (multiplier ** 5) * pfcf_used) / ((1 + discount_rate) ** 5)
+        intrinsic_dcf = (pv + terminal_value) / shares
 
-    # --- Quality Score (Celda 11) ---
+    # --- Quality Score ---
     fs = np.mean([scale(info.get("currentRatio", 0), 0.5, 3), scale(info.get("debtToEquity", 100), 200, 0)])
     pr = np.mean([scale(info.get("returnOnEquity", 0), 0, 0.3), scale(info.get("operatingMargins", 0), 0, 0.3)])
     qs = (fs * 0.4) + (pr * 0.4) + (scale(info.get("revenueGrowth", 0), -0.1, 0.3) * 0.2)
 
-    # --- Final Result ---
-    # Si no hay DCF, usamos un valor base o marcamos N/A
-    intrinsic = intrinsic_dcf if intrinsic_dcf else None
-    
+    # --- Señal ---
+    intrinsic = intrinsic_dcf
     signal = "N/A"
+    mos_price = None
+
     if intrinsic:
-        margin_adj = 0.9 if qs > 85 else 0.8 if qs > 60 else 0.7
-        if price < (intrinsic * margin_adj): signal = "BUY"
+        mos_price = intrinsic * (1 - mos)
+        if price < mos_price: signal = "BUY"
         elif price < intrinsic: signal = "HOLD"
         else: signal = "SELL"
 
@@ -74,8 +78,14 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, mos=0.25):
         "symbol": ticker_symbol,
         "price": price,
         "intrinsic": intrinsic,
+        "mos_price": mos_price,
         "signal": signal,
         "qs": qs,
+        "fcf_ttm": fcf_ttm,
+        "growth": growth,
+        "multiplier": multiplier,
+        "pfcf": pfcf_used,
+        "shares": shares,
         "info": info
     }
 
