@@ -1,58 +1,91 @@
 import streamlit as st
 from calculos import run_orca_logic
 
-# Configuración de página para móviles
-st.set_page_config(page_title="ORCA System", layout="centered")
+# 1. Configuración de la página (Optimizada para vista móvil)
+st.set_page_config(
+    page_title="ORCA Intrinsic System", 
+    layout="centered", 
+    initial_sidebar_state="collapsed"
+)
 
+# 2. Encabezado principal
 st.title("🚢 ORCA Intrinsic System")
-st.markdown("Escribe un ticker y presiona **Enter**")
+st.markdown("Analizador de valor real basado en fundamentos.")
 
-# Barra lateral para ajustes rápidos
+# 3. Barra lateral para ajustes técnicos
 with st.sidebar:
-    st.header("Ajustes de Modelo")
-    disc_rate = st.slider("Tasa de Descuento", 0.05, 0.20, 0.15)
-    st.info("La tasa de descuento afecta principalmente al modelo DCF.")
+    st.header("Configuración del Modelo")
+    disc_rate = st.slider("Tasa de Descuento (DCF)", 0.05, 0.20, 0.15, step=0.01)
+    st.info("Ajusta la tasa de retorno exigida. A mayor tasa, más conservador es el valor DCF.")
 
-# Entrada de usuario
-ticker_input = st.text_input("Ticker (ej: AAPL, MSFT, GOOGL)", "").upper()
+# 4. Entrada de Ticker
+ticker_input = st.text_input("Ingresa el Ticker y presiona Enter:", placeholder="ej: AAPL, TSLA, MSFT").upper()
 
 if ticker_input:
-    with st.spinner(f"Analizando {ticker_input}..."):
+    with st.spinner(f"Extrayendo datos y procesando {ticker_input}..."):
+        # Llamada a la lógica en calculos.py
         res = run_orca_logic(ticker_input, discount_rate=disc_rate)
         
         if "error" in res:
             st.error(res["error"])
         else:
-            # --- SECCIÓN DE RESULTADOS ---
-            st.subheader(f"Resultados para {ticker_input}")
+            # --- SECCIÓN DE RESULTADOS PRINCIPALES ---
+            st.subheader(f"Análisis de {ticker_input}")
             
-            # Fila 1: Precio y Promedio Final
             col1, col2 = st.columns(2)
-            col1.metric("Precio Mercado", f"${res['price']:.2f}")
-            col2.metric("Intrínseco (Promedio)", f"${res['intrinsic']:.2f}" if res['intrinsic'] else "N/A")
+            
+            # Precio actual de mercado
+            price = res.get('price')
+            col1.metric("Precio Mercado", f"${price:.2f}" if price else "N/A")
+            
+            # Valor intrínseco promedio
+            intrinsic = res.get('intrinsic')
+            col2.metric("Valor Intrínseco", f"${intrinsic:.2f}" if intrinsic else "N/A")
             
             st.divider()
-            
-            # Fila 2: Comparación de Modelos
-            st.write("**Desglose por Modelo:**")
-            m_col1, m_col2 = st.columns(2)
-            m_col1.metric("Valor DCF", f"${res['dcf']:.2f}" if res['dcf'] else "N/A")
-            m_col2.metric("Valor Mean Reversion", f"${res['mr']:.2f}" if res['mr'] else "N/A")
-            
-            # --- SEÑAL FINAL ---
-            color = "green" if res['signal'] == "BUY" else "orange" if res['signal'] == "HOLD" else "red"
-            st.markdown(f"### Señal Sugerida: :{color}[{res['signal']}]")
-            
-            st.divider()
-            
-            # --- QUALITY SCORE ---
-            st.write(f"**ORCA Quality Score:** {res['qs']:.1f} / 100")
-            st.progress(res['qs'] / 100)
-            
-            # --- DATOS ADICIONALES ---
-            with st.expander("Ver Detalles Financieros"):
-                st.write(f"**Crecimiento FCF Estimado:** {res['growth']:.2%}" if res['growth'] else "N/A")
-                st.write(f"**Sector:** {res['info'].get('sector', 'N/A')}")
-                st.write(f"**ROE:** {res['info'].get('returnOnEquity', 0):.2%}")
-                st.write(f"**Debt to Equity:** {res['info'].get('debtToEquity', 0)}")
 
+            # --- SECCIÓN DE MODELOS INDIVIDUALES ---
+            st.write("**Desglose por Metodología:**")
+            m_col1, m_col2 = st.columns(2)
+            
+            dcf_val = res.get('dcf')
+            m_col1.metric("Modelo DCF", f"${dcf_val:.2f}" if dcf_val else "N/A")
+            
+            mr_val = res.get('mr')
+            m_col2.metric("Modelo MR", f"${mr_val:.2f}" if mr_val else "N/A")
+
+            # --- SEÑAL DE ACCIÓN ---
+            signal = res.get('signal', 'N/A')
+            color_map = {"BUY": "green", "HOLD": "orange", "SELL": "red"}
+            signal_color = color_map.get(signal, "gray")
+            
+            st.markdown(f"### Señal Sugerida: :{signal_color}[{signal}]")
+            
+            st.divider()
+
+            # --- QUALITY SCORE ---
+            qs = res.get('qs', 0)
+            st.write(f"**ORCA Quality Score:** {qs:.1f} / 100")
+            st.progress(min(max(qs / 100, 0.0), 1.0))
+
+            # --- DETALLES FINANCIEROS (CON VALIDACIÓN ANTI-ERROR) ---
+            with st.expander("Ver Detalles y Salud Financiera"):
+                # Validación segura para Crecimiento
+                g_val = res.get('growth')
+                g_text = f"{g_val:.2%}" if isinstance(g_val, (float, int)) else "N/A"
+                
+                # Validación segura para ROE
+                roe_val = res.get('info', {}).get('returnOnEquity')
+                roe_text = f"{roe_val:.2%}" if isinstance(roe_val, (float, int)) else "N/A"
+                
+                # Otros datos
+                sector = res.get('info', {}).get('sector', 'N/A')
+                debt_eq = res.get('info', {}).get('debtToEquity', 'N/A')
+                
+                st.write(f"**Sector:** {sector}")
+                st.write(f"**Crecimiento FCF (CAGR):** {g_text}")
+                st.write(f"**ROE:** {roe_text}")
+                st.write(f"**Debt to Equity:** {debt_eq}")
+
+# 5. Pie de página simple
+st.caption("Datos provistos por Yahoo Finance vía yfinance.")
