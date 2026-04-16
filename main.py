@@ -21,7 +21,14 @@ if ticker:
         c1.metric("Precio Mercado", f"${res['price']:.2f}")
         c2.metric("Intrínseco Combinado", f"${res['intrinsic']:.2f}")
         
-        color = "green" if res['signal'] == "BUY" else "orange" if res['signal'] == "HOLD" else "red"
+        # Color dinámico: si empieza por BUY es verde
+        if res['signal'].startswith("BUY"):
+            color = "green"
+        elif res['signal'] == "HOLD":
+            color = "orange"
+        else:
+            color = "red"
+            
         c3.markdown(f"### Señal: :{color}[{res['signal']}]")
 
         # Fila 2: Desglose
