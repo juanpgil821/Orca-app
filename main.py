@@ -5,7 +5,7 @@ st.set_page_config(page_title="ORCA System", layout="wide")
 
 st.sidebar.title("Configuración ORCA")
 disc_rate = st.sidebar.slider("Discount Rate", 0.05, 0.25, 0.15)
-manual_mos = st.sidebar.slider("Min. Margin of Safety", 0.05, 0.50, 0.20)
+manual_mos = st.sidebar.slider("Min. Margin of Safety (DCF)", 0.05, 0.50, 0.20)
 
 st.title("🚢 ORCA: Advanced Intrinsic Analytics")
 ticker = st.text_input("Ticker:", "AAPL").upper()
@@ -16,7 +16,6 @@ if ticker:
     if "error" in res:
         st.error(res["error"])
     else:
-        # Fila 1: El Corazón del Sistema
         st.divider()
         c1, c2, c3 = st.columns(3)
         c1.metric("Precio Mercado", f"${res['price']:.2f}")
@@ -25,21 +24,23 @@ if ticker:
         color = "green" if res['signal'] == "BUY" else "orange" if res['signal'] == "HOLD" else "red"
         c3.markdown(f"### Señal: :{color}[{res['signal']}]")
 
-        # Fila 2: Desglose de Modelos (Aquí se ve la diferencia)
+        # Fila 2: Desglose
         st.subheader("🛠️ Modelos de Valoración")
         m1, m2, m3 = st.columns(3)
-        m1.write(f"**DCF (Cash Flow):** ${res['dcf']:.2f}")
+        m1.write(f"**DCF (Cash Flow):** ${res['dcf']:.2f}" if res['dcf'] else "**DCF:** N/A")
         m2.write(f"**MR (Mean Reversion):** ${res['mr']:.2f}")
-        m3.write(f"**Precio de Compra (w/MOS):** ${res['mos_price']:.2f}")
+        m3.write(f"**Compra (DCF w/MOS):** ${res['mos_price']:.2f}")
+        
+        st.caption(f"Límite para Venta (Intrínseco + 20%): ${res['sell_threshold']:.2f}")
 
-        # Fila 3: El Quality Score en acción
+        # Fila 3: Calidad
         st.divider()
         col_qs, col_data = st.columns([1, 2])
         
         with col_qs:
             st.subheader(f"🛡️ Quality Score: {res['qs']:.1f}")
             st.progress(res['qs']/100)
-            st.caption("Determina el margen de seguridad dinámico.")
+            st.caption("Métrica de salud financiera y crecimiento.")
 
         with col_data:
             st.write("**Métricas de Apoyo**")
