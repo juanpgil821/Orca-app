@@ -3,41 +3,41 @@ from calculos import run_orca_logic
 
 st.set_page_config(page_title="ORCA System", layout="wide")
 
-st.sidebar.title("Configuración ORCA")
+st.sidebar.title("ORCA Settings")
 disc_rate = st.sidebar.slider("Discount Rate", 0.05, 0.25, 0.15)
-manual_mos = st.sidebar.slider("Min. Margin of Safety (DCF)", 0.05, 0.50, 0.20)
 
 st.title("🚢 ORCA: Advanced Intrinsic Analytics")
-ticker = st.text_input("Ticker:", "AAPL").upper()
+ticker = st.text_input("Ticker Symbol:", "AAPL").upper()
 
 if ticker:
-    res = run_orca_logic(ticker, disc_rate, manual_mos)
+    res = run_orca_logic(ticker, disc_rate)
     
     if "error" in res:
         st.error(res["error"])
     else:
         st.divider()
         c1, c2, c3 = st.columns(3)
-        c1.metric("Precio Mercado", f"${res['price']:.2f}")
-        c2.metric("Intrínseco Combinado", f"${res['intrinsic']:.2f}")
+        c1.metric("Market Price", f"${res['price']:.2f}")
+        c2.metric("Intrinsic Value", f"${res['intrinsic']:.2f}")
         
         color = "green" if res['signal'].startswith("BUY") else "orange" if res['signal'] == "HOLD" else "red"
-        c3.markdown(f"### Señal: :{color}[{res['signal']}]")
+        c3.markdown(f"### Signal: :{color}[{res['signal']}]")
 
-        st.subheader("🛠️ Modelos de Valoración")
+        # Row 2: Valuation Models
+        st.subheader("🛠️ Valuation Models")
         m1, m2, m3 = st.columns(3)
         m1.write(f"**DCF (Cash Flow):** ${res['dcf']:.2f}" if res['dcf'] else "**DCF:** N/A")
         m2.write(f"**MR (Mean Reversion):** ${res['mr']:.2f}")
-        m3.write(f"**Compra (DCF w/MOS):** ${res['mos_price']:.2f}")
-        st.caption(f"Límite para Venta (Intrínseco + 20%): ${res['sell_threshold']:.2f}")
+        m3.write(f"**Hold/Sell Threshold (+20%):** ${res['sell_threshold']:.2f}")
 
+        # Row 3: Quality & Exposure
         st.divider()
         col_qs, col_metrics, col_exposure = st.columns([1, 1.5, 1.5])
         
         with col_qs:
             st.subheader(f"🛡️ QS: {res['qs']:.1f}")
             st.progress(res['qs']/100)
-            st.caption(f"Nivel: **{res['category']}**")
+            st.caption(f"Tier: **{res['category']}**")
 
         with col_metrics:
             st.markdown("### 📊 Fundamental Analytics")
@@ -48,7 +48,7 @@ if ticker:
 
         with col_exposure:
             st.markdown("### 🧱 Recommended Exposure")
-            st.markdown(f"**Max. Weight per Position:** `{res['max_weight']}`")
+            st.markdown(f"**Max Weight per Position:** `{res['max_weight']}`")
             
             with st.container():
                 st.info(f"""
