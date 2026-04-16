@@ -63,24 +63,25 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
     qs = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
 
-    # --- INTRÍNSECO FINAL (Híbrido) ---
+    # --- INTRÍNSECO FINAL ---
     final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
 
-    # --- NUEVA LÓGICA DE SEÑAL SOLICITADA ---
-    # Buy: Precio < Intrínseco
-    # Hold: Precio entre Intrínseco y +20%
-    # Sell: Precio > 20% del Intrínseco
-    
+    # --- SEÑAL LÓGICA ---
     sell_threshold = final_intrinsic * 1.20
     
     if price < final_intrinsic:
-        signal = "BUY"
+        # Clasificación según QS para señal BUY
+        if qs >= 80: suffix = " (Core)"
+        elif qs >= 65: suffix = " (Standard)"
+        elif qs >= 50: suffix = " (Speculative)"
+        else: suffix = " (Trap)"
+        signal = f"BUY{suffix}"
     elif price < sell_threshold:
         signal = "HOLD"
     else:
         signal = "SELL"
 
-    # Cálculo del Precio de Compra con MOS (aplicado al DCF como pediste)
+    # Cálculo del Precio de Compra con MOS (aplicado al DCF)
     mos_price = (intrinsic_dcf * (1 - manual_mos)) if intrinsic_dcf else (final_intrinsic * (1 - manual_mos))
 
     return {
@@ -96,4 +97,5 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         "growth": growth, 
         "info": info
     }
+
 
