@@ -16,14 +16,14 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     try:
         info = stock.info
         if not info or 'currentPrice' not in info:
-            return {"error": f"No hay datos para {ticker_symbol}"}
+            return {"error": f"No data found for {ticker_symbol}"}
     except:
-        return {"error": "Error de conexión"}
+        return {"error": "Connection Error"}
 
     price = info.get("currentPrice")
     shares = info.get("sharesOutstanding")
     
-    # --- MODELO 1: DCF ---
+    # --- MODEL 1: DCF (Based on FCF TTM) ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
@@ -49,7 +49,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         tv = (fcf_ttm * (m**5) * pfcf_curr) / ((1+discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: MR ---
+    # --- MODEL 2: MEAN REVERSION (MR) ---
     pe_curr = info.get("trailingPE", 20)
     pe_fwd = info.get("forwardPE", 15)
     pe_avg = (pe_curr + pe_fwd) / 2
@@ -61,27 +61,25 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
     qs = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
 
-    # --- CATEGORÍA Y PESOS ---
+    # --- CATEGORY & WEIGHTS ---
     if qs >= 80: category, max_w = "Core", "10%"
     elif qs >= 65: category, max_w = "Standard", "5%"
     elif qs >= 50: category, max_w = "Speculative", "2%"
     else: category, max_w = "Trap", "0% (Avoid)"
 
-    # --- INTRÍNSECO FINAL ---
+    # --- FINAL INTRINSIC VALUE ---
     final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
 
-    # --- SEÑAL ---
+    # --- SIGNAL LOGIC ---
     sell_threshold = final_intrinsic * 1.20
     if price < final_intrinsic: signal = f"BUY ({category})"
     elif price < sell_threshold: signal = "HOLD"
     else: signal = "SELL"
 
-    mos_price = (intrinsic_dcf * (1 - manual_mos)) if intrinsic_dcf else (final_intrinsic * (1 - manual_mos))
-
     return {
         "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
         "mr": mr_intrinsic, "qs": qs, "category": category,
-        "max_weight": max_w, "signal": signal, "mos_price": mos_price,
+        "max_weight": max_w, "signal": signal, 
         "sell_threshold": sell_threshold, "fcf_ttm": fcf_ttm, 
         "growth": growth, "info": info
     }
