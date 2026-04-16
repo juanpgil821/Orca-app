@@ -52,40 +52,48 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         intrinsic_dcf = (pv + tv) / shares
 
     # --- MODELO 2: MEAN REVERSION (MR) ---
-    # Usamos múltiplos actuales vs históricos (Proxy de tu lógica de celdas)
     pe_curr = info.get("trailingPE", 20)
     pe_fwd = info.get("forwardPE", 15)
     pe_avg = (pe_curr + pe_fwd) / 2
     mr_intrinsic = price * (pe_avg / pe_curr) if pe_curr else price
 
-    # --- QUALITY SCORE (QS) - La "Brillantez" ---
-    # Ponderación: 40% Salud Financiera, 40% Rentabilidad, 20% Crecimiento
+    # --- QUALITY SCORE (QS) ---
     fs = np.mean([scale(info.get("currentRatio", 0), 0.5, 3), scale(info.get("debtToEquity", 100), 200, 0)])
     pr = np.mean([scale(info.get("returnOnEquity", 0), 0, 0.3), scale(info.get("operatingMargins", 0), 0, 0.3)])
     gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
     qs = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
 
     # --- INTRÍNSECO FINAL (Híbrido) ---
-    # Promediamos DCF y MR para evitar sesgos de un solo modelo
     final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
 
-    # --- SEÑAL AJUSTADA POR QS ---
-    # Aquí el QS brilla: Si la calidad es alta (>80), el MOS es menor (somos más agresivos)
-    # Si la calidad es baja, exigimos un descuento mucho mayor.
-    dynamic_mos = 0.10 if qs > 80 else 0.20 if qs > 60 else 0.35
+    # --- NUEVA LÓGICA DE SEÑAL SOLICITADA ---
+    # Buy: Precio < Intrínseco
+    # Hold: Precio entre Intrínseco y +20%
+    # Sell: Precio > 20% del Intrínseco
     
-    # Permitir que el manual_mos actúe si el usuario lo prefiere
-    used_mos = max(dynamic_mos, manual_mos) 
-    mos_price = final_intrinsic * (1 - used_mos)
+    sell_threshold = final_intrinsic * 1.20
     
-    if price < mos_price: signal = "BUY"
-    elif price < final_intrinsic: signal = "HOLD"
-    else: signal = "SELL"
+    if price < final_intrinsic:
+        signal = "BUY"
+    elif price < sell_threshold:
+        signal = "HOLD"
+    else:
+        signal = "SELL"
+
+    # Cálculo del Precio de Compra con MOS (aplicado al DCF como pediste)
+    mos_price = (intrinsic_dcf * (1 - manual_mos)) if intrinsic_dcf else (final_intrinsic * (1 - manual_mos))
 
     return {
-        "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
-        "mr": mr_intrinsic, "qs": qs, "signal": signal, "mos_price": mos_price,
-        "fcf_ttm": fcf_ttm, "growth": growth, "info": info
+        "price": price, 
+        "intrinsic": final_intrinsic, 
+        "dcf": intrinsic_dcf,
+        "mr": mr_intrinsic, 
+        "qs": qs, 
+        "signal": signal, 
+        "mos_price": mos_price,
+        "sell_threshold": sell_threshold,
+        "fcf_ttm": fcf_ttm, 
+        "growth": growth, 
+        "info": info
     }
-
 
