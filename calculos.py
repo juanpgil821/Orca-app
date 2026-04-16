@@ -23,7 +23,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     price = info.get("currentPrice")
     shares = info.get("sharesOutstanding")
     
-    # --- MODELO 1: DCF (Basado en FCF TTM) ---
+    # --- MODELO 1: DCF ---
     cf = stock.cashflow
     growth = 0
     fcf_ttm = 0
@@ -51,7 +51,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         tv = (fcf_ttm * (m**5) * pfcf_curr) / ((1+discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: MEAN REVERSION (MR) ---
+    # --- MODELO 2: MR ---
     pe_curr = info.get("trailingPE", 20)
     pe_fwd = info.get("forwardPE", 15)
     pe_avg = (pe_curr + pe_fwd) / 2
@@ -63,25 +63,28 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
     qs = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
 
+    # --- CATEGORÍA Y PESOS (Nueva lógica) ---
+    if qs >= 80: 
+        category, max_w = "Core", "10%"
+    elif qs >= 65: 
+        category, max_w = "Standard", "5%"
+    elif qs >= 50: 
+        category, max_w = "Speculative", "2%"
+    else: 
+        category, max_w = "Trap", "0% (Avoid)"
+
     # --- INTRÍNSECO FINAL ---
     final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
 
     # --- SEÑAL LÓGICA ---
     sell_threshold = final_intrinsic * 1.20
-    
     if price < final_intrinsic:
-        # Clasificación según QS para señal BUY
-        if qs >= 80: suffix = " (Core)"
-        elif qs >= 65: suffix = " (Standard)"
-        elif qs >= 50: suffix = " (Speculative)"
-        else: suffix = " (Trap)"
-        signal = f"BUY{suffix}"
+        signal = f"BUY ({category})"
     elif price < sell_threshold:
         signal = "HOLD"
     else:
         signal = "SELL"
 
-    # Cálculo del Precio de Compra con MOS (aplicado al DCF)
     mos_price = (intrinsic_dcf * (1 - manual_mos)) if intrinsic_dcf else (final_intrinsic * (1 - manual_mos))
 
     return {
@@ -90,6 +93,8 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         "dcf": intrinsic_dcf,
         "mr": mr_intrinsic, 
         "qs": qs, 
+        "category": category,
+        "max_weight": max_w,
         "signal": signal, 
         "mos_price": mos_price,
         "sell_threshold": sell_threshold,
