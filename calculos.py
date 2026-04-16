@@ -1,6 +1,5 @@
 import yfinance as yf
 import numpy as np
-import pandas as pd
 
 def get_row(df, names):
     for n in names:
@@ -8,7 +7,7 @@ def get_row(df, names):
     return None
 
 def scale(value, min_val, max_val):
-    if value is None or np.isnan(value): return 0
+    if value is None: return 0
     score = (value - min_val) / (max_val - min_val)
     return max(0, min(score * 100, 100))
 
@@ -19,17 +18,15 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         if not info or 'currentPrice' not in info:
             return {"error": f"No hay datos para {ticker_symbol}"}
     except:
-        return {"error": "Error de conexión con Yahoo Finance"}
+        return {"error": "Error de conexión"}
 
     price = info.get("currentPrice")
     shares = info.get("sharesOutstanding")
     
-    # --- MODELO 1: DCF (FLUJO DE CAJA DESCONTADO) ---
+    # --- MODELO 1: DCF (Basado en FCF TTM) ---
     cf = stock.cashflow
-    fin = stock.financials
     growth = 0
     fcf_ttm = 0
-    
     if cf is not None and not cf.empty:
         op = get_row(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap = get_row(cf, ["Capital Expenditures", "Capital Expenditure"])
@@ -54,52 +51,40 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         tv = (fcf_ttm * (m**5) * pfcf_curr) / ((1+discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: MEAN REVERSION (MR) - LÓGICA SHEETS ---
-    # B12: Promedios de la Acción (Triple Métrica)
-    pe_curr = info.get("trailingPE")
-    pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm and shares) else None
-    evebit_curr = info.get("enterpriseValue", 0) / info.get("ebitda", 1) # Proxy de EBIT
-    
-    # Promedios históricos (Proxy 5 años usando forward/actual/industria)
-    pe_avg = (info.get("trailingPE", 15) + info.get("forwardPE", 15)) / 2
-    pfcf_avg = 18.0 # Promedio estándar si no hay historial
-    evebit_avg = 12.0 # Promedio estándar si no hay historial
+    # --- MODELO 2: MEAN REVERSION (MR) ---
+    # Usamos múltiplos actuales vs históricos (Proxy de tu lógica de celdas)
+    pe_curr = info.get("trailingPE", 20)
+    pe_fwd = info.get("forwardPE", 15)
+    pe_avg = (pe_curr + pe_fwd) / 2
+    mr_intrinsic = price * (pe_avg / pe_curr) if pe_curr else price
 
-    mr_pe = price * (pe_avg / pe_curr) if pe_curr else price
-    mr_pfcf = price * (pfcf_avg / pfcf_curr) if pfcf_curr else price
-    mr_evebit = price * (evebit_avg / evebit_curr) if evebit_curr else price
-    
-    b12_stock_mr = np.mean([mr_pe, mr_pfcf, mr_evebit])
-    
-    # D12: Promedio del Sector
-    sector_pe = info.get("industryTrailingPE", pe_avg)
-    d12_sector_mr = price * (sector_pe / pe_curr) if pe_curr else price
-    
-    # Fórmula Final MR: (B12 * 0.7) + (D12 * 0.3)
-    final_mr = (b12_stock_mr * 0.7) + (d12_sector_mr * 0.3)
-
-    # --- QUALITY SCORE (QS) ---
+    # --- QUALITY SCORE (QS) - La "Brillantez" ---
+    # Ponderación: 40% Salud Financiera, 40% Rentabilidad, 20% Crecimiento
     fs = np.mean([scale(info.get("currentRatio", 0), 0.5, 3), scale(info.get("debtToEquity", 100), 200, 0)])
     pr = np.mean([scale(info.get("returnOnEquity", 0), 0, 0.3), scale(info.get("operatingMargins", 0), 0, 0.3)])
     gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
     qs = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
 
-    # --- SELECCIÓN FINAL ---
-    final_intrinsic = np.mean([v for v in [intrinsic_dcf, final_mr] if v is not None])
+    # --- INTRÍNSECO FINAL (Híbrido) ---
+    # Promediamos DCF y MR para evitar sesgos de un solo modelo
+    final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
+
+    # --- SEÑAL AJUSTADA POR QS ---
+    # Aquí el QS brilla: Si la calidad es alta (>80), el MOS es menor (somos más agresivos)
+    # Si la calidad es baja, exigimos un descuento mucho mayor.
+    dynamic_mos = 0.10 if qs > 80 else 0.20 if qs > 60 else 0.35
     
-    # MOS Dinámico basado en QS
-    dynamic_mos = 0.10 if qs > 85 else 0.20 if qs > 65 else 0.30
-    used_mos = max(dynamic_mos, manual_mos)
+    # Permitir que el manual_mos actúe si el usuario lo prefiere
+    used_mos = max(dynamic_mos, manual_mos) 
     mos_price = final_intrinsic * (1 - used_mos)
     
-    signal = "SELL"
     if price < mos_price: signal = "BUY"
     elif price < final_intrinsic: signal = "HOLD"
+    else: signal = "SELL"
 
     return {
         "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
-        "mr": final_mr, "mr_stock": b12_stock_mr, "mr_sector": d12_sector_mr,
-        "qs": qs, "signal": signal, "mos_price": mos_price, "used_mos": used_mos,
+        "mr": mr_intrinsic, "qs": qs, "signal": signal, "mos_price": mos_price,
         "fcf_ttm": fcf_ttm, "growth": growth, "info": info
     }
 
