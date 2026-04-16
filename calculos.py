@@ -25,8 +25,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     
     # --- MODELO 1: DCF ---
     cf = stock.cashflow
-    growth = 0
-    fcf_ttm = 0
+    growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
         op = get_row(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap = get_row(cf, ["Capital Expenditures", "Capital Expenditure"])
@@ -45,8 +44,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     intrinsic_dcf = None
     if fcf_ttm and shares:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        m = 1 + g_capped
-        pfcf_curr = price / (fcf_ttm / shares) if shares > 0 else 20
+        m, pfcf_curr = 1 + g_capped, price / (fcf_ttm / shares) if shares > 0 else 20
         pv = sum([fcf_ttm * (m**t) / ((1+discount_rate)**t) for t in range(1, 6)])
         tv = (fcf_ttm * (m**5) * pfcf_curr) / ((1+discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
@@ -63,44 +61,29 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
     qs = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
 
-    # --- CATEGORÍA Y PESOS (Nueva lógica) ---
-    if qs >= 80: 
-        category, max_w = "Core", "10%"
-    elif qs >= 65: 
-        category, max_w = "Standard", "5%"
-    elif qs >= 50: 
-        category, max_w = "Speculative", "2%"
-    else: 
-        category, max_w = "Trap", "0% (Avoid)"
+    # --- CATEGORÍA Y PESOS ---
+    if qs >= 80: category, max_w = "Core", "10%"
+    elif qs >= 65: category, max_w = "Standard", "5%"
+    elif qs >= 50: category, max_w = "Speculative", "2%"
+    else: category, max_w = "Trap", "0% (Avoid)"
 
     # --- INTRÍNSECO FINAL ---
     final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
 
-    # --- SEÑAL LÓGICA ---
+    # --- SEÑAL ---
     sell_threshold = final_intrinsic * 1.20
-    if price < final_intrinsic:
-        signal = f"BUY ({category})"
-    elif price < sell_threshold:
-        signal = "HOLD"
-    else:
-        signal = "SELL"
+    if price < final_intrinsic: signal = f"BUY ({category})"
+    elif price < sell_threshold: signal = "HOLD"
+    else: signal = "SELL"
 
     mos_price = (intrinsic_dcf * (1 - manual_mos)) if intrinsic_dcf else (final_intrinsic * (1 - manual_mos))
 
     return {
-        "price": price, 
-        "intrinsic": final_intrinsic, 
-        "dcf": intrinsic_dcf,
-        "mr": mr_intrinsic, 
-        "qs": qs, 
-        "category": category,
-        "max_weight": max_w,
-        "signal": signal, 
-        "mos_price": mos_price,
-        "sell_threshold": sell_threshold,
-        "fcf_ttm": fcf_ttm, 
-        "growth": growth, 
-        "info": info
+        "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
+        "mr": mr_intrinsic, "qs": qs, "category": category,
+        "max_weight": max_w, "signal": signal, "mos_price": mos_price,
+        "sell_threshold": sell_threshold, "fcf_ttm": fcf_ttm, 
+        "growth": growth, "info": info
     }
 
 
