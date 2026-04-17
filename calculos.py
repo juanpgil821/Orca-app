@@ -93,4 +93,3 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         "signal": signal, "sell_threshold": sell_threshold, 
         "fcf_ttm": fcf_ttm, "growth": growth, "info": info
     }
-
