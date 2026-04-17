@@ -19,6 +19,7 @@ if ticker:
     if "error" in res:
         st.error(res["error"])
     else:
+        # Row 1: Metrics & Signal
         st.divider()
         c1, c2, c3 = st.columns(3)
         c1.metric("Market Price", f"${res['price']:.2f}")
@@ -27,6 +28,21 @@ if ticker:
         color = "red" if "REJECTED" in res['signal'] else "green" if "BUY" in res['signal'] else "orange" if res['signal'] == "HOLD" else "red"
         c3.markdown(f"### Signal: :{color}[{res['signal']}]")
 
+        # --- NEW: SYSTEM ALERTS ---
+        alerts = []
+        if res['roe'] > 1.0:
+            alerts.append(f"⚠️ **High ROE ({res['roe']:.0%}):** This may be distorted by negative equity or massive share buybacks.")
+        if res['debt_to_equity'] > 200:
+            alerts.append(f"🚩 **Extreme Leverage:** Debt to Equity is `{res['debt_to_equity']:.0f}%`. Ensure interest coverage is stable.")
+        if res['curr_ratio'] < 0.8:
+            alerts.append("📉 **Liquidity Risk:** Current Ratio is below 0.8. Check short-term solvency.")
+            
+        if alerts:
+            with st.expander("🔍 Risk Management Alerts", expanded=True):
+                for a in alerts:
+                    st.warning(a)
+
+        # Row 2: Models
         st.subheader("🛠️ Valuation Models")
         m1, m2, m3 = st.columns(3)
         m1.write(f"**DCF (Cash Flow):** ${res['dcf']:.2f}" if res['dcf'] else "**DCF:** N/A")
@@ -43,8 +59,6 @@ if ticker:
 
         with col_metrics:
             st.markdown("### 📊 Fundamental Analytics")
-            
-            # Sub-secciones para mejor lectura
             ma1, ma2 = st.columns(2)
             with ma1:
                 st.write("**Solvency & Efficiency**")
@@ -52,7 +66,6 @@ if ticker:
                 st.write(f"Debt to Equity: `{res['debt_to_equity']:.2f}%`")
                 st.write(f"ROE: `{res['roe']:.2%}`")
                 st.write(f"Op. Margins: `{res['margins']:.2%}`")
-            
             with ma2:
                 st.write("**Growth & Cash Flow**")
                 st.write(f"Revenue Growth: `{res['rev_growth']:.2%}`")
