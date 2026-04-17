@@ -11,7 +11,15 @@ def scale(value, min_val, max_val):
     score = (value - min_val) / (max_val - min_val)
     return max(0, min(score * 100, 100))
 
-def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
+def classify_qs(qs):
+    if qs is None: return "Unknown"
+    elif qs >= 90: return "Gem 💎"
+    elif qs >= 70: return "Core"
+    elif qs >= 40: return "Standard"
+    elif qs >= 30: return "Speculative"
+    else: return "Avoid"
+
+def run_orca_logic(ticker_symbol, discount_rate=0.15):
     stock = yf.Ticker(ticker_symbol)
     try:
         info = stock.info
@@ -23,7 +31,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     price = info.get("currentPrice")
     shares = info.get("sharesOutstanding")
     
-    # --- MODEL 1: DCF (Based on FCF TTM) ---
+    # --- MODEL 1: DCF ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
@@ -49,7 +57,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
         tv = (fcf_ttm * (m**5) * pfcf_curr) / ((1+discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODEL 2: MEAN REVERSION (MR) ---
+    # --- MODEL 2: MEAN REVERSION ---
     pe_curr = info.get("trailingPE", 20)
     pe_fwd = info.get("forwardPE", 15)
     pe_avg = (pe_curr + pe_fwd) / 2
@@ -59,29 +67,30 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15, manual_mos=0.25):
     fs = np.mean([scale(info.get("currentRatio", 0), 0.5, 3), scale(info.get("debtToEquity", 100), 200, 0)])
     pr = np.mean([scale(info.get("returnOnEquity", 0), 0, 0.3), scale(info.get("operatingMargins", 0), 0, 0.3)])
     gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
-    qs = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
-
-    # --- CATEGORY & WEIGHTS ---
-    if qs >= 80: category, max_w = "Core", "10%"
-    elif qs >= 65: category, max_w = "Standard", "5%"
-    elif qs >= 50: category, max_w = "Speculative", "2%"
-    else: category, max_w = "Trap", "0% (Avoid)"
+    qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
+    
+    qs_category = classify_qs(qs_value)
 
     # --- FINAL INTRINSIC VALUE ---
     final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
 
-    # --- SIGNAL LOGIC ---
+    # --- SIGNAL LOGIC REFINED ---
     sell_threshold = final_intrinsic * 1.20
-    if price < final_intrinsic: signal = f"BUY ({category})"
-    elif price < sell_threshold: signal = "HOLD"
-    else: signal = "SELL"
+    
+    if price < final_intrinsic:
+        if qs_value < 30:
+            signal = "REJECTED (Avoid)"
+        else:
+            signal = f"BUY ({qs_category})"
+    elif price < sell_threshold:
+        signal = "HOLD"
+    else:
+        signal = "SELL"
 
     return {
         "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
-        "mr": mr_intrinsic, "qs": qs, "category": category,
-        "max_weight": max_w, "signal": signal, 
-        "sell_threshold": sell_threshold, "fcf_ttm": fcf_ttm, 
-        "growth": growth, "info": info
+        "mr": mr_intrinsic, "qs": qs_value, "category": qs_category,
+        "signal": signal, "sell_threshold": sell_threshold, 
+        "fcf_ttm": fcf_ttm, "growth": growth, "info": info
     }
-
 
