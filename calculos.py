@@ -7,7 +7,9 @@ def get_row(df, names):
     return None
 
 def scale(value, min_val, max_val):
-    if value is None: return 0
+    # Aseguramos que el valor sea numérico para evitar errores en la escala
+    if value is None or not isinstance(value, (int, float)): 
+        value = 0
     score = (value - min_val) / (max_val - min_val)
     return max(0, min(score * 100, 100))
 
@@ -63,25 +65,33 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     pe_avg = (pe_curr + pe_fwd) / 2
     mr_intrinsic = price * (pe_avg / pe_curr) if pe_curr else price
 
-    # --- QUALITY SCORE (QS) ---
-    fs = np.mean([scale(info.get("currentRatio", 0), 0.5, 3), scale(info.get("debtToEquity", 100), 200, 0)])
-    pr = np.mean([scale(info.get("returnOnEquity", 0), 0, 0.3), scale(info.get("operatingMargins", 0), 0, 0.3)])
-    gr = scale(info.get("revenueGrowth", 0), -0.1, 0.3)
-    qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
+    # --- QUALITY SCORE (QS) METRICS (With None Protection) ---
+    def safe_get(key):
+        val = info.get(key, 0)
+        return val if val is not None else 0
+
+    curr_ratio = safe_get("currentRatio")
+    d_to_e = safe_get("debtToEquity")
+    roe = safe_get("returnOnEquity")
+    op_margins = safe_get("operatingMargins")
+    rev_growth = safe_get("revenueGrowth")
+    earn_growth = safe_get("earningsGrowth")
+
+    # Scaling logic for QS
+    fs = np.mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
+    pr = np.mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
+    gr = np.mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
     
+    qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
     qs_category = classify_qs(qs_value)
 
     # --- FINAL INTRINSIC VALUE ---
     final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
 
-    # --- SIGNAL LOGIC REFINED ---
+    # --- SIGNAL ---
     sell_threshold = final_intrinsic * 1.20
-    
     if price < final_intrinsic:
-        if qs_value < 30:
-            signal = "REJECTED (Avoid)"
-        else:
-            signal = f"BUY ({qs_category})"
+        signal = "REJECTED (Avoid)" if qs_value < 30 else f"BUY ({qs_category})"
     elif price < sell_threshold:
         signal = "HOLD"
     else:
@@ -91,5 +101,9 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
         "mr": mr_intrinsic, "qs": qs_value, "category": qs_category,
         "signal": signal, "sell_threshold": sell_threshold, 
-        "fcf_ttm": fcf_ttm, "growth": growth, "info": info
+        "fcf_ttm": fcf_ttm, "growth": growth, 
+        "curr_ratio": curr_ratio, "debt_to_equity": d_to_e,
+        "rev_growth": rev_growth, "earn_growth": earn_growth,
+        "roe": roe, "margins": op_margins
     }
+
