@@ -7,11 +7,14 @@ def get_row(df, names):
     return None
 
 def scale(value, min_val, max_val):
-    # Aseguramos que el valor sea numérico para evitar errores en la escala
-    if value is None or not isinstance(value, (int, float)): 
-        value = 0
-    score = (value - min_val) / (max_val - min_val)
-    return max(0, min(score * 100, 100))
+    try:
+        if value is None or not isinstance(value, (int, float, np.number)): 
+            return 0
+        if min_val == max_val: return 0
+        score = (value - min_val) / (max_val - min_val)
+        return max(0, min(score * 100, 100))
+    except:
+        return 0
 
 def classify_qs(qs):
     if qs is None: return "Unknown"
@@ -27,13 +30,13 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         info = stock.info
         if not info or 'currentPrice' not in info:
             return {"error": f"No data found for {ticker_symbol}"}
-    except:
-        return {"error": "Connection Error"}
+    except Exception as e:
+        return {"error": f"Connection Error: {str(e)}"}
 
-    price = info.get("currentPrice")
-    shares = info.get("sharesOutstanding")
+    price = info.get("currentPrice", 0)
+    shares = info.get("sharesOutstanding", 0)
     
-    # --- MODEL 1: DCF ---
+    # --- MODELO 1: DCF (FLUJO DE CAJA DESCONTADO) ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
@@ -52,43 +55,66 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
             fcf_ttm = op_q.iloc[:4].sum() + cap_q.iloc[:4].sum()
 
     intrinsic_dcf = None
-    if fcf_ttm and shares:
+    if fcf_ttm and shares and shares > 0:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        m, pfcf_curr = 1 + g_capped, price / (fcf_ttm / shares) if shares > 0 else 20
-        pv = sum([fcf_ttm * (m**t) / ((1+discount_rate)**t) for t in range(1, 6)])
-        tv = (fcf_ttm * (m**5) * pfcf_curr) / ((1+discount_rate)**5)
+        pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else 20
+        pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
+        tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODEL 2: MEAN REVERSION ---
-    pe_curr = info.get("trailingPE", 20)
-    pe_fwd = info.get("forwardPE", 15)
-    pe_avg = (pe_curr + pe_fwd) / 2
-    mr_intrinsic = price * (pe_avg / pe_curr) if pe_curr else price
+    # --- MODELO 2: MEAN REVERSION (DINÁMICO Y ESTABILIZADO) ---
+    eps_ttm = info.get("trailingEps")
+    pe_curr = info.get("trailingPE")
+    pe_fwd = info.get("forwardPE")
 
-    # --- QUALITY SCORE (QS) METRICS (With None Protection) ---
-    def safe_get(key):
+    # Validación real de datos: Evitamos promedios arbitrarios (15/20)
+    pe_avg = None
+    if pe_curr and pe_fwd:
+        pe_avg = (pe_curr + pe_fwd) / 2
+    elif pe_curr:
+        pe_avg = pe_curr
+    elif pe_fwd:
+        pe_avg = pe_fwd
+
+    # Cálculo basado puramente en Earnings (Independiente del precio actual)
+    mr_intrinsic = None
+    if eps_ttm and eps_ttm > 0 and pe_avg:
+        mr_intrinsic = eps_ttm * pe_avg
+
+    # --- PROTECCIÓN Y LIMPIEZA DE MÉTRICAS ---
+    def safe_num(key):
         val = info.get(key, 0)
-        return val if val is not None else 0
+        return val if isinstance(val, (int, float, np.number)) and val is not None else 0
 
-    curr_ratio = safe_get("currentRatio")
-    d_to_e = safe_get("debtToEquity")
-    roe = safe_get("returnOnEquity")
-    op_margins = safe_get("operatingMargins")
-    rev_growth = safe_get("revenueGrowth")
-    earn_growth = safe_get("earningsGrowth")
+    curr_ratio = safe_num("currentRatio")
+    d_to_e = safe_num("debtToEquity")
+    roe = safe_num("returnOnEquity")
+    op_margins = safe_num("operatingMargins")
+    rev_growth = safe_num("revenueGrowth")
+    earn_growth = safe_num("earningsGrowth")
 
-    # Scaling logic for QS
-    fs = np.mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
-    pr = np.mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
-    gr = np.mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
+    # --- QUALITY SCORE (QS) ---
+    def safe_mean(values):
+        clean = [v for v in values if v is not None]
+        return np.mean(clean) if clean else 0
+
+    fs = safe_mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
+    pr = safe_mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
+    gr = safe_mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
     
     qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
     qs_category = classify_qs(qs_value)
 
-    # --- FINAL INTRINSIC VALUE ---
-    final_intrinsic = np.mean([v for v in [intrinsic_dcf, mr_intrinsic] if v is not None])
+    # --- VALUACIÓN FINAL (PROMEDIO DE MODELOS VÁLIDOS) ---
+    valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v is not None and v > 0]
+    
+    if valid_models:
+        final_intrinsic = np.mean(valid_models)
+    else:
+        # Si no hay modelos válidos, usamos el precio como base neutral
+        final_intrinsic = price
 
-    # --- SIGNAL ---
+    # --- SEÑAL DE ACCIÓN ---
     sell_threshold = final_intrinsic * 1.20
     if price < final_intrinsic:
         signal = "REJECTED (Avoid)" if qs_value < 30 else f"BUY ({qs_category})"
