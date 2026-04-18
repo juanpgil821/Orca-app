@@ -30,12 +30,13 @@ if ticker:
         c2.metric("Intrinsic Value", f"${res['intrinsic']:.2f}")
         
         # Color logic for Signal
-        if "REJECTED" in res['signal']: color = "red"
-        elif "BUY" in res['signal']: color = "green"
-        elif res['signal'] == "HOLD": color = "orange"
+        sig = res['signal']
+        if "REJECTED" in sig: color = "red"
+        elif "BUY" in sig: color = "green"
+        elif sig == "HOLD": color = "orange"
         else: color = "red"
             
-        c3.markdown(f"### Signal: :{color}[{res['signal']}]")
+        c3.markdown(f"### Signal: :{color}[{sig}]")
 
         # Row 2: Models
         st.subheader("🛠️ Valuation Models")
@@ -55,14 +56,13 @@ if ticker:
 
         with col_metrics:
             st.markdown("### 📊 Fundamental Analytics")
-            st.write(f"**FCF TTM:** ${res['fcf_ttm']:,.0f}")
-            st.write(f"**CAGR:** {res.get('growth', 0):.2%}")
-            st.write(f"**ROE:** {res['info'].get('returnOnEquity', 0):.2%}")
-            st.write(f"**Margins:** {res['info'].get('operatingMargins', 0):.2%}")
+            st.write(f"**FCF TTM:** ${res.get('fcf_ttm', 0):,.0f}")
+            st.write(f"**CAGR (Growth):** {res.get('growth', 0):.2%}")
+            st.write(f"**ROE:** {res.get('roe', 0):.2%}")
+            st.write(f"**Margins:** {res.get('margins', 0):.2%}")
 
         with col_exposure:
             st.markdown("### 🧱 Recommended Exposure")
-            # Dynamic weights for the new tiers
             weights = {"Gem 💎": "15%", "Core": "10%", "Standard": "5%", "Speculative": "2%", "Avoid": "0% (Avoid)"}
             max_w = weights.get(res['category'], "0%")
             st.markdown(f"**Max Weight per Position:** `{max_w}`")
