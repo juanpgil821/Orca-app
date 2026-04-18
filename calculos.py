@@ -36,7 +36,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     price = info.get("currentPrice", 0)
     shares = info.get("sharesOutstanding", 0)
     
-    # --- MODELO 1: DCF (FLUJO DE CAJA DESCONTADO) ---
+    # --- MODELO 1: DCF (FLUJO DE CAJA) ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
@@ -57,29 +57,24 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     intrinsic_dcf = None
     if fcf_ttm and shares and shares > 0:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else 20
-        pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
-        tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
-        intrinsic_dcf = (pv + tv) / shares
+        # Usamos el P/FCF actual pero limitado a un rango lógico para evitar distorsiones
+        pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else None
+        
+        if pfcf_curr:
+            pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
+            tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
+            intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: MEAN REVERSION (DINÁMICO Y ESTABILIZADO) ---
-    eps_ttm = info.get("trailingEps")
-    pe_curr = info.get("trailingPE")
-    pe_fwd = info.get("forwardPE")
-
-    # Validación real de datos: Evitamos promedios arbitrarios (15/20)
-    pe_avg = None
-    if pe_curr and pe_fwd:
-        pe_avg = (pe_curr + pe_fwd) / 2
-    elif pe_curr:
-        pe_avg = pe_curr
-    elif pe_fwd:
-        pe_avg = pe_fwd
-
-    # Cálculo basado puramente en Earnings (Independiente del precio actual)
+    # --- MODELO 2: FUNDAMENTAL VALUATION (ANTI-VALS) ---
+    # Usamos el Forward EPS (proyectado) y el Forward PE (múltiplo objetivo de analistas)
+    # Estas métricas son mucho más estables que el precio por minuto.
+    eps_fwd = info.get("forwardEps")
+    pe_target = info.get("forwardPE")
+    
     mr_intrinsic = None
-    if eps_ttm and eps_ttm > 0 and pe_avg:
-        mr_intrinsic = eps_ttm * pe_avg
+    if eps_fwd and eps_fwd > 0 and pe_target and pe_target > 0:
+        # El valor es lo que se espera que gane por lo que el mercado está dispuesto a pagar (Forward)
+        mr_intrinsic = eps_fwd * pe_target
 
     # --- PROTECCIÓN Y LIMPIEZA DE MÉTRICAS ---
     def safe_num(key):
@@ -111,8 +106,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     if valid_models:
         final_intrinsic = np.mean(valid_models)
     else:
-        # Si no hay modelos válidos, usamos el precio como base neutral
-        final_intrinsic = price
+        final_intrinsic = price # Sin datos suficientes, no hay juicio
 
     # --- SEÑAL DE ACCIÓN ---
     sell_threshold = final_intrinsic * 1.20
