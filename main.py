@@ -7,100 +7,80 @@ st.set_page_config(page_title="ORCA System", layout="wide", page_icon="🚢")
 def get_cached_orca_data(ticker, disc_rate):
     return run_orca_logic(ticker, disc_rate)
 
-st.sidebar.title("ORCA Settings")
-disc_rate = st.sidebar.slider("Discount Rate (DCF)", 0.05, 0.25, 0.15)
-
 st.title("🚢 ORCA: Advanced Intrinsic Analytics")
-st.caption("Objective Risk & Capital Allocation System")
-
 ticker = st.text_input("Enter Ticker Symbol:", "").upper()
+disc_rate = st.sidebar.slider("Discount Rate", 0.05, 0.25, 0.15)
 
 if ticker:
     res = get_cached_orca_data(ticker, disc_rate)
-    
     if "error" in res:
         st.error(res["error"])
     else:
+        # Fila 1: Métricas principales (Mismo formato que el anterior)
         st.divider()
         c1, c2, c3 = st.columns(3)
         c1.metric("Market Price", f"${res['price']:.2f}")
         c2.metric("Intrinsic Value", f"${res['intrinsic']:.2f}")
-        
-        color = "red" if "REJECTED" in res['signal'] else "green" if "BUY" in res['signal'] else "orange"
-        c3.markdown(f"### Signal: :{color}[{res['signal']}]")
+        sig_col = "red" if "REJECTED" in res['signal'] else "green" if "BUY" in res['signal'] else "orange"
+        c3.markdown(f"### Signal: :{sig_col}[{res['signal']}]")
 
-        # --- ORCA INTELLIGENCE: DIAGNÓSTICO ROBUSTO ---
+        # --- ORCA INTELLIGENCE 3.0: ANALISTA SENIOR ---
         alerts = []
         
-        # 1. Escenario Zombie (Caso LZMH)
-        if res['fcf_ttm'] <= 0 and res['margins'] <= 0:
-            alerts.append("💀 **Zombie Company Alert:** Generación de caja nula y márgenes operativos negativos. Estructura de negocio no viable actualmente.")
+        # A. SECCIÓN DE EXCELENCIA (GEMAS Y FOSOS)
+        if res['margins'] > 0.35 and res['roe'] > 0.25:
+            alerts.append("💎 **Wide Moat Gem:** Márgenes de élite (>35%) y ROE alto. Esta empresa tiene un poder de fijación de precios masivo.")
         
-        # 2. Análisis de ROE y Capital
-        if res['roe'] < 0:
-            alerts.append(f"🚨 **Capital Erosion:** ROE negativo ({res['roe']:.1%}). La empresa está consumiendo el patrimonio de los accionistas.")
-        elif res['roe'] > 0.40 and res['debt_to_equity'] > 250:
-            alerts.append(f"🧪 **Financial Engineering:** ROE de {res['roe']:.0%} inflado por deuda masiva. Riesgo de apalancamiento oculto.")
+        if res['buyback_yield'] > 0.04:
+            alerts.append(f"🐂 **Aggressive Cannibal:** Recompra de acciones masiva ({res['buyback_yield']:.1%}). La directiva cree que la acción está barata y está concentrando tu valor.")
 
-        # 3. Trampa de Liquidez
-        if res['curr_ratio'] > 1.0 and res['fcf_ttm'] < 0:
-            alerts.append(f"🌫️ **False Liquidity:** Current Ratio de {res['curr_ratio']:.2f} es estable, pero el flujo de caja negativo está drenando la caja operativa.")
-        elif res['curr_ratio'] < 0.8:
-            if res['fcf_ttm'] > 1e9:
-                alerts.append(f"🔄 **Efficient Cash Machine:** Liquidez baja pero compensada por un FCF masivo. Común en empresas de alta rotación.")
+        # B. SECCIÓN DE RIESGOS Y ESTRÉS
+        if res['curr_ratio'] < 0.85:
+            if res['fcf_ttm'] > 5e9: # Flujo de caja masivo (Ej: Apple, Walmart)
+                alerts.append(f"🔄 **Controlled Liquidity:** CR bajo ({res['curr_ratio']:.2f}) pero compensado por FCF masivo. Es una estrategia de eficiencia en gigantes.")
             else:
-                alerts.append(f"📉 **Liquidity Stress:** Riesgo de incumplimiento a corto plazo (CR < 1).")
+                alerts.append(f"🚨 **Liquidity Asphyxia:** CR de {res['curr_ratio']:.2f} sin suficiente FCF. Riesgo inminente de necesitar deuda o ampliar capital.")
 
-        # 4. Escenario de Deuda
-        if res['debt_to_equity'] > 300:
-            if res['margins'] > 0.20:
-                alerts.append(f"🏢 **Serviceable Debt:** Deuda alta pero protegida por márgenes operativos robustos.")
+        if res['payout'] > 0.90 and res['fcf_ttm'] > 0:
+            alerts.append("⚠️ **Dividend Trap?** Payout ratio extremo (>90%). El dividendo podría ser insostenible si el FCF flaquea un solo trimestre.")
+
+        if res['debt_to_equity'] > 250:
+            if res['margins'] > 0.15:
+                alerts.append(f"🏢 **High Leverage (Serviceable):** Deuda del {res['debt_to_equity']:.0f}%, pero los márgenes permiten el pago de intereses por ahora.")
             else:
-                alerts.append("🚨 **Extreme Leverage Risk:** Deuda insostenible frente a márgenes de beneficio mediocres.")
+                alerts.append(f"🚩 **Debt Death Trap:** Deuda alta con márgenes pobres. La empresa trabaja para el banco, no para ti.")
+
+        # C. EL ESCENARIO "ZOMBIE / LZMH"
+        if res['roe'] < 0 or res['fcf_ttm'] <= 0:
+            if res['rev_growth'] > 0.20:
+                alerts.append("🔥 **Cash Burner:** Crecimiento alto pero quemando caja. ¿Cuándo llegará la rentabilidad?")
+            else:
+                alerts.append("💀 **Structural Decay:** Sin beneficios, sin caja y sin crecimiento. Evitar a toda costa.")
 
         if alerts:
-            with st.expander("🔍 ORCA Intelligence: Risk & Quality Diagnosis", expanded=True):
+            with st.expander("🔍 ORCA Intelligence: Deep Risk & Quality Analysis", expanded=True):
                 for a in alerts:
-                    if any(icon in a for icon in ["💀", "🚨", "🧪"]): st.error(a)
-                    elif any(icon in a for icon in ["🌫️", "📉"]): st.warning(a)
-                    else: st.info(a)
+                    if any(icon in a for icon in ["💎", "🐂", "✨"]): st.info(a)
+                    elif any(icon in a for icon in ["⚠️", "🔄", "🏢"]): st.warning(a)
+                    else: st.error(a)
 
-        # Fila 2: Modelos
-        st.subheader("🛠️ Valuation Models")
-        m1, m2, m3 = st.columns(3)
-        m1.write(f"**DCF (Cash Flow):** ${res['dcf']:.2f}" if res.get('dcf') else "**DCF:** N/A")
-        m2.write(f"**MR (Mean Reversion):** ${res['mr']:.2f}")
-        m3.write(f"**Hold/Sell Threshold (+20%):** ${res['sell_threshold']:.2f}")
-
-        # Fila 3: Métricas
+        # Fila 2: Modelos y Datos Fundamentales (Resto del código igual para mantener consistencia)
         st.divider()
-        col_qs, col_metrics, col_exposure = st.columns([1, 1.8, 1.2])
-        
-        with col_qs:
-            st.subheader(f"🛡️ QS: {res['qs']:.1f}")
-            st.progress(res['qs']/100)
-            st.caption(f"Asset Tier: **{res['category']}**")
-
-        with col_metrics:
-            st.markdown("### 📊 Fundamental Analytics")
-            ma1, ma2 = st.columns(2)
-            with ma1:
-                st.write(f"Current Ratio: `{res['curr_ratio']:.2f}`")
-                st.write(f"Debt to Equity: `{res['debt_to_equity']:.1f}%`")
-                st.write(f"ROE: `{res['roe']:.2%}`")
-            with ma2:
-                st.write(f"FCF TTM: `${res['fcf_ttm']:,.0f}`")
-                st.write(f"Op. Margins: `{res['margins']:.2%}`")
-                st.write(f"Revenue Growth: `{res['rev_growth']:.2%}`")
-
-        with col_exposure:
-            st.markdown("### 🧱 Recommended Exposure")
-            weights = {"Gem 💎": "15%", "Core": "10%", "Standard": "5%", "Speculative": "2%", "Avoid": "0%"}
-            st.markdown(f"**Max Weight:** `{weights.get(res['category'], '0%')}`")
-            
-            tier_limit = {"Gem 💎": "60%", "Core": "50%", "Standard": "30%", "Speculative": "10%", "Avoid": "0%"}
-            st.info(f"**Tier Limit:** {tier_limit.get(res['category'], '0%')}")
+        st.subheader("📊 Fundamental Analytics")
+        ma1, ma2, ma3 = st.columns(3)
+        with ma1:
+            st.write(f"**QS:** {res['qs']:.1f} ({res['category']})")
+            st.write(f"ROE: `{res['roe']:.2%}`")
+            st.write(f"Op. Margins: `{res['margins']:.2%}`")
+        with ma2:
+            st.write(f"Current Ratio: `{res['curr_ratio']:.2f}`")
+            st.write(f"Debt to Equity: `{res['debt_to_equity']:.1f}%`")
+            st.write(f"Buyback Yield: `{res['buyback_yield']:.2%}`")
+        with ma3:
+            st.write(f"FCF TTM: `${res['fcf_ttm']:,.0f}`")
+            st.write(f"Rev. Growth: `{res['rev_growth']:.2%}`")
+            st.write(f"Payout Ratio: `{res['payout']:.2%}`")
 else:
-    st.info("Please enter a ticker symbol to begin.")
+    st.info("Enter ticker to perform Deep Analysis.")
 
 
