@@ -2,6 +2,7 @@ import yfinance as yf
 import numpy as np
 
 def get_row(df, names):
+    if df is None or df.empty: return None
     for n in names:
         if n in df.index: return df.loc[n]
     return None
@@ -34,10 +35,11 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
 
     price = info.get("currentPrice", 0)
     shares = info.get("sharesOutstanding", 0)
+    eps_ttm = info.get("trailingEps", 0)
     
-    # --- MODELO 1: DCF (FLUJO DE CAJA DESCONTADO) ---
+    # --- MODELO 1: DCF & FCF ---
     cf = stock.cashflow
-    growth, fcf_ttm, buyback_yield = 0, 0, 0
+    growth, fcf_ttm, buyback_yield, fcf_share = 0, 0, 0, 0
     if cf is not None and not cf.empty:
         op = get_row(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap = get_row(cf, ["Capital Expenditures", "Capital Expenditure"])
@@ -47,23 +49,22 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
             fcf_h = (op + cap).dropna()
             if len(fcf_h) >= 2:
                 try:
-                    # Lógica robusta para crecimiento: evita errores con FCF negativos
                     if fcf_h.iloc[-1] > 0 and fcf_h.iloc[0] > 0:
                         growth = (fcf_h.iloc[0] / fcf_h.iloc[-1]) ** (1 / (len(fcf_h)-1)) - 1
                     else:
-                        growth = -0.50 # Penalización si el historial es inconsistente
+                        growth = -0.50
                 except:
                     growth = 0
             fcf_ttm = fcf_h.iloc[:4].sum() if len(fcf_h) >= 1 else 0
+            if shares and shares > 0:
+                fcf_share = fcf_ttm / shares
 
-        # Cálculo de Buyback Yield (Necesario para el escenario "Cannibal")
         if repro is not None and price and shares:
             last_repro = abs(repro.iloc[0]) if not repro.empty else 0
             mkt_cap = price * shares
             buyback_yield = last_repro / mkt_cap if mkt_cap > 0 else 0
 
     # --- MODELO 2: MEAN REVERSION ---
-    eps_ttm = info.get("trailingEps", 0)
     pe_curr = info.get("trailingPE", 20)
     pe_fwd = info.get("forwardPE", 15)
     pe_avg = (pe_curr + pe_fwd) / 2 if (pe_curr and pe_fwd) else 20
@@ -92,20 +93,17 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     qs_category = classify_qs(qs_value)
 
     # --- VALUACIÓN FINAL ---
-    # Si DCF es inviable (Zombies), usamos MR o un descuento agresivo sobre precio
-    intrinsic_dcf = None
+    intrinsic_dcf = 0
     if fcf_ttm and shares and shares > 0:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        fcf_share = fcf_ttm / shares
         pfcf_curr = price / fcf_share if fcf_share != 0 else 20
         pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
         tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v is not None and v > 0]
+    valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v > 0]
     final_intrinsic = np.mean(valid_models) if valid_models else (price * 0.7 if res_metrics['roe'] > 0 else price * 0.3)
 
-    # --- SEÑAL ---
     sell_threshold = final_intrinsic * 1.20
     if price < final_intrinsic:
         signal = "REJECTED" if qs_value < 30 or res_metrics['roe'] < 0 else f"BUY ({qs_category})"
@@ -115,18 +113,11 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         signal = "SELL"
 
     return {
-        "price": price, 
-        "intrinsic": final_intrinsic, 
-        "signal": signal,
-        "dcf": intrinsic_dcf if intrinsic_dcf else 0, 
-        "mr": mr_intrinsic, 
-        "sell_threshold": sell_threshold,
-        "qs": qs_value, 
-        "category": qs_category,
-        "fcf_ttm": fcf_ttm, 
-        "growth": growth, 
-        "buyback_yield": buyback_yield,
-        **res_metrics # Desglosa curr_ratio, debt_to_equity, roe, margins, rev_growth, earn_growth
+        "price": price, "intrinsic": final_intrinsic, "signal": signal,
+        "dcf": intrinsic_dcf, "mr": mr_intrinsic, "sell_threshold": sell_threshold,
+        "qs": qs_value, "category": qs_category, "fcf_ttm": fcf_ttm, 
+        "growth": growth, "buyback_yield": buyback_yield, "eps_ttm": eps_ttm, "fcf_share": fcf_share,
+        **res_metrics
     }
 
 
