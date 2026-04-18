@@ -36,7 +36,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     price = info.get("currentPrice", 0)
     shares = info.get("sharesOutstanding", 0)
     
-    # --- MODELO 1: DCF (FLUJO DE CAJA) ---
+    # --- MODELO 1: DCF (BASADO EN CASH FLOW) ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
@@ -57,7 +57,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     intrinsic_dcf = None
     if fcf_ttm and shares and shares > 0:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        # Usamos el P/FCF actual pero limitado a un rango lógico para evitar distorsiones
+        # Usamos el múltiplo actual de mercado como referencia terminal
         pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else None
         
         if pfcf_curr:
@@ -65,18 +65,25 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
             tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
             intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: FUNDAMENTAL VALUATION (ANTI-VALS) ---
-    # Usamos el Forward EPS (proyectado) y el Forward PE (múltiplo objetivo de analistas)
-    # Estas métricas son mucho más estables que el precio por minuto.
+    # --- MODELO 2: VALUACIÓN POR CRECIMIENTO (ANTI-VALS) ---
+    # Usamos el PEG para extraer el crecimiento (G) y fijar un PE justo.
     eps_fwd = info.get("forwardEps")
-    pe_target = info.get("forwardPE")
+    peg_ratio = info.get("pegRatio")
+    curr_pe = info.get("trailingPE")
     
     mr_intrinsic = None
-    if eps_fwd and eps_fwd > 0 and pe_target and pe_target > 0:
-        # El valor es lo que se espera que gane por lo que el mercado está dispuesto a pagar (Forward)
-        mr_intrinsic = eps_fwd * pe_target
+    if eps_fwd and eps_fwd > 0 and peg_ratio and peg_ratio > 0 and curr_pe:
+        # G = PE / PEG. Este número representa el crecimiento anual esperado de 5 años.
+        # Es un dato estático que NO cambia con el precio del segundo.
+        implied_growth_rate = curr_pe / peg_ratio
+        
+        # Fair PE: Según Peter Lynch, el PE justo es igual a la tasa de crecimiento.
+        fair_pe = implied_growth_rate
+        
+        # El valor intrínseco es la ganancia esperada por ese múltiplo "estático".
+        mr_intrinsic = eps_fwd * fair_pe
 
-    # --- PROTECCIÓN Y LIMPIEZA DE MÉTRICAS ---
+    # --- MÉTRICAS Y QS ---
     def safe_num(key):
         val = info.get(key, 0)
         return val if isinstance(val, (int, float, np.number)) and val is not None else 0
@@ -88,7 +95,6 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     rev_growth = safe_num("revenueGrowth")
     earn_growth = safe_num("earningsGrowth")
 
-    # --- QUALITY SCORE (QS) ---
     def safe_mean(values):
         clean = [v for v in values if v is not None]
         return np.mean(clean) if clean else 0
@@ -100,15 +106,11 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
     qs_category = classify_qs(qs_value)
 
-    # --- VALUACIÓN FINAL (PROMEDIO DE MODELOS VÁLIDOS) ---
+    # --- VALUACIÓN FINAL (MODELOS DESACOPLADOS) ---
     valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v is not None and v > 0]
-    
-    if valid_models:
-        final_intrinsic = np.mean(valid_models)
-    else:
-        final_intrinsic = price # Sin datos suficientes, no hay juicio
+    final_intrinsic = np.mean(valid_models) if valid_models else price
 
-    # --- SEÑAL DE ACCIÓN ---
+    # --- SEÑAL ---
     sell_threshold = final_intrinsic * 1.20
     if price < final_intrinsic:
         signal = "REJECTED (Avoid)" if qs_value < 30 else f"BUY ({qs_category})"
@@ -126,4 +128,5 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         "rev_growth": rev_growth, "earn_growth": earn_growth,
         "roe": roe, "margins": op_margins
     }
+
 
