@@ -36,14 +36,15 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     price = info.get("currentPrice", 0)
     shares = info.get("sharesOutstanding", 0)
     
-    # --- MODELO 1: DCF (FLUJO DE CAJA DESCONTADO) ---
+    # --- MODELO 1: DCF ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
         op = get_row(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap = get_row(cf, ["Capital Expenditures", "Capital Expenditure"])
         if op is not None and cap is not None:
-            fcf_h = (op - cap).dropna()
+            # FCF = Operating Cash Flow + Capital Expenditure (que suele ser negativo)
+            fcf_h = (op + cap).dropna() 
             if len(fcf_h) >= 2:
                 growth = (fcf_h.iloc[0] / fcf_h.iloc[-1]) ** (1 / (len(fcf_h)-1)) - 1
     
@@ -52,36 +53,29 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         op_q = get_row(qcf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap_q = get_row(qcf, ["Capital Expenditures", "Capital Expenditure"])
         if op_q is not None and cap_q is not None:
-            # Sumamos los últimos 4 trimestres para el TTM
             fcf_ttm = op_q.iloc[:4].sum() + cap_q.iloc[:4].sum()
 
     intrinsic_dcf = None
     if fcf_ttm and shares and shares > 0:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        # Para el valor terminal usamos un múltiplo conservador si no hay PE claro
-        pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else 20
+        fcf_share = fcf_ttm / shares
+        pfcf_curr = price / fcf_share if fcf_share != 0 else 20
         pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
         tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: MEAN REVERSION (REVERSIÓN A LA MEDIA ESTABILIZADA) ---
-    # Usamos EPS (Ganancias por acción) para desvincular el intrínseco del precio actual
+    # --- MODELO 2: MEAN REVERSION ---
     eps_ttm = info.get("trailingEps", 0)
-    eps_fwd = info.get("forwardEps", 0)
-    
     pe_curr = info.get("trailingPE", 20)
     pe_fwd_val = info.get("forwardPE", 15)
-    # Calculamos un PE promedio como "Múltiplo Justo"
     pe_avg = (pe_curr + pe_fwd_val) / 2 if (pe_curr and pe_fwd_val) else 20
     
-    # Cálculo: ¿Cuánto debería valer según lo que gana hoy?
     if eps_ttm and eps_ttm > 0:
         mr_intrinsic = eps_ttm * pe_avg
     else:
-        # Fallback relativo solo si no hay EPS (empresas en pérdida)
         mr_intrinsic = price * (pe_avg / pe_curr) if pe_curr and pe_curr != 0 else price
 
-    # --- PROTECCIÓN Y LIMPIEZA DE MÉTRICAS ---
+    # --- MÉTRICAS DE CALIDAD ---
     def safe_num(key):
         val = info.get(key, 0)
         return val if isinstance(val, (int, float, np.number)) and val is not None else 0
@@ -94,22 +88,18 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     earn_growth = safe_num("earningsGrowth")
 
     # --- QUALITY SCORE (QS) ---
-    def safe_mean(values):
-        clean = [v for v in values if v is not None]
-        return np.mean(clean) if clean else 0
-
-    fs = safe_mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
-    pr = safe_mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
-    gr = safe_mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
+    fs = np.mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
+    pr = np.mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
+    gr = np.mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
     
     qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
     qs_category = classify_qs(qs_value)
 
-    # --- VALUACIÓN FINAL (PROMEDIO DE MODELOS INDEPENDIENTES) ---
+    # --- VALUACIÓN FINAL ---
     valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v is not None and v > 0]
     final_intrinsic = np.mean(valid_models) if valid_models else price
 
-    # --- SEÑAL DE ACCIÓN ---
+    # --- SEÑAL ---
     sell_threshold = final_intrinsic * 1.20
     if price < final_intrinsic:
         signal = "REJECTED (Avoid)" if qs_value < 30 else f"BUY ({qs_category})"
@@ -119,13 +109,18 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         signal = "SELL"
 
     return {
-        "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
-        "mr": mr_intrinsic, "qs": qs_value, "category": qs_category,
-        "signal": signal, "sell_threshold": sell_threshold, 
-        "fcf_ttm": fcf_ttm, "growth": growth, 
-        "curr_ratio": curr_ratio, "debt_to_equity": d_to_e,
-        "rev_growth": rev_growth, "earn_growth": earn_growth,
-        "roe": roe, "margins": op_margins
+        "price": price, 
+        "intrinsic": final_intrinsic, 
+        "dcf": intrinsic_dcf,
+        "mr": mr_intrinsic, 
+        "qs": qs_value, 
+        "category": qs_category,
+        "signal": signal, 
+        "sell_threshold": sell_threshold, 
+        "fcf_ttm": fcf_ttm, 
+        "growth": growth, 
+        "roe": roe, 
+        "margins": op_margins
     }
 
 
