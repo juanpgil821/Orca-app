@@ -33,10 +33,12 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     except Exception as e:
         return {"error": f"Connection Error: {str(e)}"}
 
+    # --- MÉTRICAS BÁSICAS ---
     price = info.get("currentPrice", 0)
     shares = info.get("sharesOutstanding", 0)
+    current_pe = info.get("trailingPE", 0)
     
-    # --- MODELO 1: DCF (FLUJO DE CAJA) ---
+    # --- MODELO 1: DCF ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
@@ -54,35 +56,37 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         if op_q is not None and cap_q is not None:
             fcf_ttm = op_q.iloc[:4].sum() + cap_q.iloc[:4].sum()
 
+    # Cálculo de P/FCF
+    p_fcf = price / (fcf_ttm / shares) if (fcf_ttm and shares and shares > 0) else 0
+
     intrinsic_dcf = None
     if fcf_ttm and shares and shares > 0:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else 20
+        pfcf_val = p_fcf if p_fcf > 0 else 20
         pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
-        tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
+        tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_val) / ((1 + discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: QUALITY-MULTIPLIER VALUATION (EL "VALS-KILLER") ---
-    # Usamos el ROE como el "Multiplicador Justo". 
-    # Si una empresa tiene ROE 35%, el mercado suele pagar un múltiplo cercano a 35.
-    eps_fwd = info.get("forwardEps")
-    roe = info.get("returnOnEquity")
+    # --- MODELO 2: MEAN REVERSION ---
+    eps_ttm = info.get("trailingEps", 0)
+    eps_fwd = info.get("forwardEps", 0)
+    pe_curr = info.get("trailingPE", 20)
+    pe_fwd_val = info.get("forwardPE", 15)
+    pe_avg = (pe_curr + pe_fwd_val) / 2 if (pe_curr and pe_fwd_val) else 20
     
-    mr_intrinsic = None
-    if eps_fwd and eps_fwd > 0 and roe and roe > 0:
-        # Convertimos el ROE (ej: 0.35) en un multiplicador entero (35)
-        # Ponemos un techo de 50 para evitar burbujas en empresas ultra-apalancadas
-        fair_multiplier = min(roe * 100, 50)
-        mr_intrinsic = eps_fwd * fair_multiplier
+    if eps_ttm and eps_ttm > 0:
+        mr_intrinsic = eps_ttm * pe_avg
+    else:
+        mr_intrinsic = price * (pe_avg / pe_curr) if pe_curr and pe_curr != 0 else price
 
-    # --- MÉTRICAS PROTEGIDAS ---
+    # --- PROTECCIÓN Y LIMPIEZA DE MÉTRICAS (SOLICITADAS) ---
     def safe_num(key):
         val = info.get(key, 0)
         return val if isinstance(val, (int, float, np.number)) and val is not None else 0
 
-    curr_ratio = safe_num("currentRatio")
-    d_to_e = safe_num("debtToEquity")
-    roe_val = safe_num("returnOnEquity")
+    debt_to_equity = safe_num("debtToEquity")
+    current_ratio = safe_num("currentRatio")
+    roe = safe_num("returnOnEquity")
     op_margins = safe_num("operatingMargins")
     rev_growth = safe_num("revenueGrowth")
     earn_growth = safe_num("earningsGrowth")
@@ -92,8 +96,8 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         clean = [v for v in values if v is not None]
         return np.mean(clean) if clean else 0
 
-    fs = safe_mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
-    pr = safe_mean([scale(roe_val, 0, 0.3), scale(op_margins, 0, 0.3)])
+    fs = safe_mean([scale(current_ratio, 0.5, 3), scale(debt_to_equity, 200, 0)])
+    pr = safe_mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
     gr = safe_mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
     
     qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
@@ -112,14 +116,28 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     else:
         signal = "SELL"
 
+    # Retornamos todas las métricas solicitadas
     return {
-        "price": price, "intrinsic": final_intrinsic, "dcf": intrinsic_dcf,
-        "mr": mr_intrinsic, "qs": qs_value, "category": qs_category,
-        "signal": signal, "sell_threshold": sell_threshold, 
-        "fcf_ttm": fcf_ttm, "growth": growth, 
-        "curr_ratio": curr_ratio, "debt_to_equity": d_to_e,
-        "rev_growth": rev_growth, "earn_growth": earn_growth,
-        "roe": roe_val, "margins": op_margins
+        "price": price,
+        "intrinsic": final_intrinsic,
+        "signal": signal,
+        "qs": qs_value,
+        "category": qs_category,
+        # Métricas específicas solicitadas para mostrar:
+        "fcf": fcf_ttm,
+        "fcf_growth": growth,
+        "p_fcf": p_fcf,
+        "shares": shares,
+        "current_pe": current_pe,
+        "debt_to_equity": debt_to_equity,
+        "current_ratio": current_ratio,
+        "roe": roe,
+        "op_margins": op_margins,
+        "rev_growth": rev_growth,
+        "earn_growth": earn_growth,
+        # Datos adicionales de modelos
+        "dcf": intrinsic_dcf,
+        "mr": mr_intrinsic,
+        "sell_threshold": sell_threshold
     }
-
 
