@@ -17,8 +17,7 @@ def scale(value, min_val, max_val):
         return 0
 
 def classify_qs(qs):
-    if qs is None: return "Unknown"
-    elif qs >= 90: return "Gem 💎"
+    if qs >= 90: return "Gem 💎"
     elif qs >= 70: return "Core"
     elif qs >= 40: return "Standard"
     elif qs >= 30: return "Speculative"
@@ -43,13 +42,13 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         op = get_row(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap = get_row(cf, ["Capital Expenditures", "Capital Expenditure"])
         if op is not None and cap is not None:
-            # FCF = Operating Cash Flow + Capital Expenditure (que suele ser negativo)
-            fcf_h = (op + cap).dropna() 
+            # FCF Histórico para crecimiento (Capex es negativo en YF, por eso se suma)
+            fcf_h = (op + cap).dropna()
             if len(fcf_h) >= 2:
                 growth = (fcf_h.iloc[0] / fcf_h.iloc[-1]) ** (1 / (len(fcf_h)-1)) - 1
     
     qcf = stock.quarterly_cashflow
-    if not qcf.empty:
+    if qcf is not None and not qcf.empty:
         op_q = get_row(qcf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap_q = get_row(qcf, ["Capital Expenditures", "Capital Expenditure"])
         if op_q is not None and cap_q is not None:
@@ -64,32 +63,28 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
         intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: MEAN REVERSION ---
+    # --- MODELO 2: MEAN REVERSION (MR) ---
     eps_ttm = info.get("trailingEps", 0)
     pe_curr = info.get("trailingPE", 20)
-    pe_fwd_val = info.get("forwardPE", 15)
-    pe_avg = (pe_curr + pe_fwd_val) / 2 if (pe_curr and pe_fwd_val) else 20
-    
-    if eps_ttm and eps_ttm > 0:
-        mr_intrinsic = eps_ttm * pe_avg
-    else:
-        mr_intrinsic = price * (pe_avg / pe_curr) if pe_curr and pe_curr != 0 else price
+    pe_fwd = info.get("forwardPE", 15)
+    pe_avg = (pe_curr + pe_fwd) / 2 if (pe_curr and pe_fwd) else 20
+    mr_intrinsic = eps_ttm * pe_avg if eps_ttm else price
 
-    # --- MÉTRICAS DE CALIDAD ---
+    # --- MÉTRICAS PARA DIAGNÓSTICO (Nombres exactos del main.py) ---
     def safe_num(key):
         val = info.get(key, 0)
         return val if isinstance(val, (int, float, np.number)) and val is not None else 0
 
     curr_ratio = safe_num("currentRatio")
-    d_to_e = safe_num("debtToEquity")
+    debt_to_equity = safe_num("debtToEquity")
     roe = safe_num("returnOnEquity")
-    op_margins = safe_num("operatingMargins")
+    margins = safe_num("operatingMargins")
     rev_growth = safe_num("revenueGrowth")
     earn_growth = safe_num("earningsGrowth")
 
     # --- QUALITY SCORE (QS) ---
-    fs = np.mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
-    pr = np.mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
+    fs = np.mean([scale(curr_ratio, 0.5, 3), scale(debt_to_equity, 200, 0)])
+    pr = np.mean([scale(roe, 0, 0.3), scale(margins, 0, 0.3)])
     gr = np.mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
     
     qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
@@ -99,10 +94,10 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v is not None and v > 0]
     final_intrinsic = np.mean(valid_models) if valid_models else price
 
-    # --- SEÑAL ---
+    # --- SEÑAL Y UMBRAL ---
     sell_threshold = final_intrinsic * 1.20
     if price < final_intrinsic:
-        signal = "REJECTED (Avoid)" if qs_value < 30 else f"BUY ({qs_category})"
+        signal = "REJECTED" if qs_value < 30 else f"BUY ({qs_category})"
     elif price < sell_threshold:
         signal = "HOLD"
     else:
@@ -111,16 +106,20 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     return {
         "price": price, 
         "intrinsic": final_intrinsic, 
-        "dcf": intrinsic_dcf,
+        "signal": signal,
+        "dcf": intrinsic_dcf, 
         "mr": mr_intrinsic, 
+        "sell_threshold": sell_threshold,
         "qs": qs_value, 
         "category": qs_category,
-        "signal": signal, 
-        "sell_threshold": sell_threshold, 
-        "fcf_ttm": fcf_ttm, 
-        "growth": growth, 
         "roe": roe, 
-        "margins": op_margins
+        "margins": margins, 
+        "debt_to_equity": debt_to_equity,
+        "curr_ratio": curr_ratio, 
+        "fcf_ttm": fcf_ttm, 
+        "growth": growth,
+        "rev_growth": rev_growth, 
+        "earn_growth": earn_growth
     }
 
 
