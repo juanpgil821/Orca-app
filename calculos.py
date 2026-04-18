@@ -36,7 +36,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     price = info.get("currentPrice", 0)
     shares = info.get("sharesOutstanding", 0)
     
-    # --- MODELO 1: DCF (BASADO EN CASH FLOW) ---
+    # --- MODELO 1: DCF (FLUJO DE CAJA) ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
@@ -57,56 +57,49 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     intrinsic_dcf = None
     if fcf_ttm and shares and shares > 0:
         g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        # Usamos el múltiplo actual de mercado como referencia terminal
-        pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else None
-        
-        if pfcf_curr:
-            pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
-            tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
-            intrinsic_dcf = (pv + tv) / shares
+        pfcf_curr = price / (fcf_ttm / shares) if (fcf_ttm / shares) != 0 else 20
+        pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
+        tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
+        intrinsic_dcf = (pv + tv) / shares
 
-    # --- MODELO 2: VALUACIÓN POR CRECIMIENTO (ANTI-VALS) ---
-    # Usamos el PEG para extraer el crecimiento (G) y fijar un PE justo.
+    # --- MODELO 2: QUALITY-MULTIPLIER VALUATION (EL "VALS-KILLER") ---
+    # Usamos el ROE como el "Multiplicador Justo". 
+    # Si una empresa tiene ROE 35%, el mercado suele pagar un múltiplo cercano a 35.
     eps_fwd = info.get("forwardEps")
-    peg_ratio = info.get("pegRatio")
-    curr_pe = info.get("trailingPE")
+    roe = info.get("returnOnEquity")
     
     mr_intrinsic = None
-    if eps_fwd and eps_fwd > 0 and peg_ratio and peg_ratio > 0 and curr_pe:
-        # G = PE / PEG. Este número representa el crecimiento anual esperado de 5 años.
-        # Es un dato estático que NO cambia con el precio del segundo.
-        implied_growth_rate = curr_pe / peg_ratio
-        
-        # Fair PE: Según Peter Lynch, el PE justo es igual a la tasa de crecimiento.
-        fair_pe = implied_growth_rate
-        
-        # El valor intrínseco es la ganancia esperada por ese múltiplo "estático".
-        mr_intrinsic = eps_fwd * fair_pe
+    if eps_fwd and eps_fwd > 0 and roe and roe > 0:
+        # Convertimos el ROE (ej: 0.35) en un multiplicador entero (35)
+        # Ponemos un techo de 50 para evitar burbujas en empresas ultra-apalancadas
+        fair_multiplier = min(roe * 100, 50)
+        mr_intrinsic = eps_fwd * fair_multiplier
 
-    # --- MÉTRICAS Y QS ---
+    # --- MÉTRICAS PROTEGIDAS ---
     def safe_num(key):
         val = info.get(key, 0)
         return val if isinstance(val, (int, float, np.number)) and val is not None else 0
 
     curr_ratio = safe_num("currentRatio")
     d_to_e = safe_num("debtToEquity")
-    roe = safe_num("returnOnEquity")
+    roe_val = safe_num("returnOnEquity")
     op_margins = safe_num("operatingMargins")
     rev_growth = safe_num("revenueGrowth")
     earn_growth = safe_num("earningsGrowth")
 
+    # --- QUALITY SCORE (QS) ---
     def safe_mean(values):
         clean = [v for v in values if v is not None]
         return np.mean(clean) if clean else 0
 
     fs = safe_mean([scale(curr_ratio, 0.5, 3), scale(d_to_e, 200, 0)])
-    pr = safe_mean([scale(roe, 0, 0.3), scale(op_margins, 0, 0.3)])
+    pr = safe_mean([scale(roe_val, 0, 0.3), scale(op_margins, 0, 0.3)])
     gr = safe_mean([scale(rev_growth, -0.1, 0.3), scale(earn_growth, -0.1, 0.3)])
     
     qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
     qs_category = classify_qs(qs_value)
 
-    # --- VALUACIÓN FINAL (MODELOS DESACOPLADOS) ---
+    # --- VALUACIÓN FINAL ---
     valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v is not None and v > 0]
     final_intrinsic = np.mean(valid_models) if valid_models else price
 
@@ -126,7 +119,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         "fcf_ttm": fcf_ttm, "growth": growth, 
         "curr_ratio": curr_ratio, "debt_to_equity": d_to_e,
         "rev_growth": rev_growth, "earn_growth": earn_growth,
-        "roe": roe, "margins": op_margins
+        "roe": roe_val, "margins": op_margins
     }
 
 
