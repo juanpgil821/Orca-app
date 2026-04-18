@@ -37,9 +37,13 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     shares = info.get("sharesOutstanding", 0)
     eps_ttm = info.get("trailingEps", 0)
     
-    # --- MODELO 1: DCF & FCF ---
+    # --- EXTRACCIÓN DE ESTADOS FINANCIEROS ---
     cf = stock.cashflow
-    growth, fcf_ttm, buyback_yield, fcf_share = 0, 0, 0, 0
+    inc = stock.financials
+    
+    growth, fcf_ttm, buyback_yield, fcf_share, ebit_share = 0, 0, 0, 0, 0
+    
+    # 1. Análisis de Flujo de Caja (FCF y Buybacks)
     if cf is not None and not cf.empty:
         op = get_row(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap = get_row(cf, ["Capital Expenditures", "Capital Expenditure"])
@@ -53,8 +57,7 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
                         growth = (fcf_h.iloc[0] / fcf_h.iloc[-1]) ** (1 / (len(fcf_h)-1)) - 1
                     else:
                         growth = -0.50
-                except:
-                    growth = 0
+                except: growth = 0
             fcf_ttm = fcf_h.iloc[:4].sum() if len(fcf_h) >= 1 else 0
             if shares and shares > 0:
                 fcf_share = fcf_ttm / shares
@@ -64,13 +67,20 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
             mkt_cap = price * shares
             buyback_yield = last_repro / mkt_cap if mkt_cap > 0 else 0
 
-    # --- MODELO 2: MEAN REVERSION ---
+    # 2. Análisis de EBIT (Operating Income)
+    if inc is not None and not inc.empty and shares:
+        ebit_row = get_row(inc, ["Operating Income", "EBIT"])
+        if ebit_row is not None and not ebit_row.empty:
+            ebit_ttm = ebit_row.iloc[:4].sum() if len(ebit_row) >= 1 else 0
+            ebit_share = ebit_ttm / shares
+
+    # --- MODELO MEAN REVERSION ---
     pe_curr = info.get("trailingPE", 20)
     pe_fwd = info.get("forwardPE", 15)
     pe_avg = (pe_curr + pe_fwd) / 2 if (pe_curr and pe_fwd) else 20
     mr_intrinsic = eps_ttm * pe_avg if eps_ttm and eps_ttm > 0 else 0
 
-    # --- MÉTRICAS DE LIMPIEZA ---
+    # --- MÉTRICAS AUXILIARES ---
     def safe_num(key):
         val = info.get(key, 0)
         return val if isinstance(val, (int, float, np.number)) and val is not None else 0
@@ -88,7 +98,6 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     fs = np.mean([scale(res_metrics['curr_ratio'], 0.5, 3), scale(res_metrics['debt_to_equity'], 200, 0)])
     pr = np.mean([scale(res_metrics['roe'], 0, 0.35), scale(res_metrics['margins'], 0, 0.35)])
     gr = np.mean([scale(res_metrics['rev_growth'], -0.1, 0.3), scale(res_metrics['earn_growth'], -0.1, 0.3)])
-    
     qs_value = (fs * 0.4) + (pr * 0.4) + (gr * 0.2)
     qs_category = classify_qs(qs_value)
 
@@ -116,7 +125,8 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
         "price": price, "intrinsic": final_intrinsic, "signal": signal,
         "dcf": intrinsic_dcf, "mr": mr_intrinsic, "sell_threshold": sell_threshold,
         "qs": qs_value, "category": qs_category, "fcf_ttm": fcf_ttm, 
-        "growth": growth, "buyback_yield": buyback_yield, "eps_ttm": eps_ttm, "fcf_share": fcf_share,
+        "growth": growth, "buyback_yield": buyback_yield, 
+        "eps_ttm": eps_ttm, "fcf_share": fcf_share, "ebit_share": ebit_share,
         **res_metrics
     }
 
