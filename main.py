@@ -11,7 +11,7 @@ def get_cached_orca_data(ticker, disc_rate):
 # Sidebar
 st.sidebar.title("ORCA Settings")
 disc_rate = st.sidebar.slider("Discount Rate (DCF)", 0.05, 0.25, 0.15)
-st.sidebar.caption("Caché activa: 10 minutos por ticker.")
+st.sidebar.caption("Higher rate = more conservative valuation.")
 
 # Encabezado
 st.title("🚢 ORCA: Advanced Intrinsic Analytics")
@@ -43,20 +43,20 @@ if ticker:
         if res['fcf_ttm'] <= 0 and res['margins'] <= 0:
             alerts.append("💀 **Zombie Company Alert:** Negocio inviable sin flujo ni margen.")
         if res['roe'] < 0:
-            alerts.append(f"🚨 **Capital Destroyer:** ROE negativo.")
+            alerts.append(f"🚨 **Capital Destroyer:** ROE negativo ({res['roe']:.1%}).")
         if res['roe'] > 0.50 and res['debt_to_equity'] > 250:
             alerts.append("🧪 **Leveraged ROE:** Rentabilidad inflada por deuda.")
         if res['curr_ratio'] < 0.9:
             if res['fcf_ttm'] > 2_000_000_000:
-                alerts.append(f"🔄 **Negative Working Capital King:** Eficiencia operativa masiva.")
+                alerts.append(f"🔄 **Negative Working Capital King:** FCF masivo compensa CR bajo.")
             else:
                 alerts.append(f"📉 **Liquidity Trap:** Riesgo de insolvencia a corto plazo.")
 
         if alerts:
             with st.expander("🔍 ORCA Intelligence: Risk & Quality Diagnosis", expanded=True):
                 for a in alerts:
-                    if any(icon in a for icon in ["💎", "✨", "🐂", "🔄"]): st.info(a)
-                    elif any(icon in a for icon in ["⚠️", "🧪", "🚀", "📉"]): st.warning(a)
+                    if any(icon in a for icon in ["💎", "✨", "🐂", "🔄", "✂️"]): st.info(a)
+                    elif any(icon in a for icon in ["⚠️", "🧪", "🚀", "🌫️"]): st.warning(a)
                     else: st.error(a)
 
         # Fila 2: Modelos de Valuación
@@ -66,14 +66,14 @@ if ticker:
         m2.write(f"**MR (Mean Reversion):** ${res['mr']:.2f}")
         m3.write(f"**Hold/Sell Threshold:** ${res['sell_threshold']:.2f}")
 
-        # Fila 3: Métricas y Value Drivers
+        # Fila 3: Métricas, Value Drivers y Exposición
         st.divider()
         col_qs, col_metrics, col_exposure = st.columns([1, 1.8, 1.2])
         
         with col_qs:
             st.subheader(f"🛡️ QS: {res['qs']:.1f}")
             st.progress(res['qs']/100)
-            st.caption(f"Tier: **{res['category']}**")
+            st.caption(f"Asset Tier: **{res['category']}**")
 
         with col_metrics:
             st.markdown("### 📊 Fundamental Analytics")
@@ -81,7 +81,7 @@ if ticker:
             with ma1:
                 st.write("**Solvency & Efficiency**")
                 st.write(f"Current Ratio: `{res['curr_ratio']:.2f}`")
-                st.write(f"Debt to Equity: `{res['debt_to_equity']:.1f}%`")
+                st.write(f"Debt to Equity: `{res['debt_to_equity']:.2f}%`")
                 st.write(f"ROE: `{res['roe']:.2%}`")
             with ma2:
                 st.write("**Growth & Cash Flow**")
@@ -89,18 +89,21 @@ if ticker:
                 st.write(f"FCF TTM: `${res['fcf_ttm']:,.0f}`")
                 st.write(f"FCF CAGR: `{res['growth']:.2%}`")
             with ma3:
-                st.write("**Value Drivers (Per Share)**")
+                st.write("**Value Drivers**")
                 st.write(f"EPS TTM: `${res['eps_ttm']:.2f}`")
                 st.write(f"FCF/SH: `${res['fcf_share']:.2f}`")
-                st.write(f"EBIT/SH: `${res['ebit_share']:.2f}`")
+                st.write(f"Margins: `{res['margins']:.2%}`")
 
         with col_exposure:
-            st.markdown("### 🧱 Exposure Control")
+            st.markdown("### 🧱 Recommended Exposure")
             weights = {"Gem 💎": "15%", "Core": "10%", "Standard": "5%", "Speculative": "2%", "Avoid": "0%"}
-            st.markdown(f"**Max Weight:** `{weights.get(res['category'], '0%')}`")
+            max_w = weights.get(res['category'], "0%")
+            st.markdown(f"**Max Weight:** `{max_w}`")
             st.info(f"**Portfolio Limit:** {res['category']}")
 
 else:
     st.info("Enter a ticker symbol to start analysis.")
+
+
 
 
