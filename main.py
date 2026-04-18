@@ -34,64 +34,30 @@ if ticker:
         color = "red" if "REJECTED" in res['signal'] else "green" if "BUY" in res['signal'] else "orange" if res['signal'] == "HOLD" else "red"
         c3.markdown(f"### Signal: :{color}[{res['signal']}]")
 
-        # --- ORCA INTELLIGENCE: MATRIZ DE DIAGNÓSTICO ROBUSTA ---
+        # --- ORCA INTELLIGENCE ---
         alerts = []
-        
-        # 1. ESCENARIOS DE EXCELENCIA (ELITE)
         if res['margins'] > 0.30 and res['roe'] > 0.30:
-            if res['debt_to_equity'] < 100:
-                alerts.append("💎 **Wide Moat Gem:** Márgenes y ROE de élite con deuda baja. Un negocio con ventajas competitivas estructurales.")
-            else:
-                alerts.append("✨ **High-Quality Compounder:** Retornos excepcionales sobre el capital. La deuda está totalmente justificada por la rentabilidad.")
-
+            alerts.append("💎 **Wide Moat Gem:** Márgenes y ROE de élite.")
         if res['buyback_yield'] > 0.05:
-            alerts.append(f"🐂 **Shareholder Yield Alpha:** Recompra de acciones masiva ({res['buyback_yield']:.1%}). La directiva está canibalizando acciones a favor del accionista.")
-
-        # 2. ESCENARIOS ZOMBIE Y DETERIORO (Caso LZMH y similares)
+            alerts.append(f"🐂 **Shareholder Yield Alpha:** Recompra masiva ({res['buyback_yield']:.1%}).")
         if res['fcf_ttm'] <= 0 and res['margins'] <= 0:
-            alerts.append("💀 **Zombie Company Alert:** Ni flujo de caja ni margen operativo. El negocio base está quemando dinero sin retorno.")
-        
+            alerts.append("💀 **Zombie Company Alert:** Negocio inviable sin flujo ni margen.")
         if res['roe'] < 0:
-            alerts.append(f"🚨 **Capital Destroyer:** ROE negativo ({res['roe']:.1%}). La empresa está diluyendo o consumiendo el patrimonio del accionista.")
-
-        # 3. ESCENARIOS DE CONTRADICCIÓN (INGENIERÍA FINANCIERA)
+            alerts.append(f"🚨 **Capital Destroyer:** ROE negativo ({res['roe']:.1%}).")
         if res['roe'] > 0.50 and res['debt_to_equity'] > 250:
-            alerts.append(f"🧪 **Leveraged ROE:** Este ROE tan alto no es eficiencia operativa, es el resultado de un balance sobreapalancado. Riesgo de fragilidad.")
-        
-        if res['rev_growth'] > 0.20 and res['fcf_ttm'] < 0:
-            alerts.append("🚀 **Growth Burn:** Crecimiento agresivo de ingresos a costa de quemar caja masivamente. Típico de empresas que necesitan capital externo constante.")
-
-        # 4. ESCENARIOS DE LIQUIDEZ Y EFICIENCIA (STRESS ANALYTICS)
+            alerts.append("🧪 **Leveraged ROE:** Rentabilidad inflada por deuda.")
         if res['curr_ratio'] < 0.9:
             if res['fcf_ttm'] > 2_000_000_000:
-                alerts.append(f"🔄 **Negative Working Capital King:** CR bajo ({res['curr_ratio']:.2f}) pero con caja masiva. La empresa cobra antes de pagar a proveedores (Modelo Costco/Apple).")
+                alerts.append(f"🔄 **Negative Working Capital King:** FCF masivo compensa CR bajo.")
             else:
-                alerts.append(f"📉 **Liquidity Trap:** Ratio de liquidez peligroso ({res['curr_ratio']:.2f}). No hay flujo de caja suficiente para cubrir deudas de corto plazo.")
+                alerts.append(f"📉 **Liquidity Trap:** Riesgo de insolvencia a corto plazo.")
 
-        if res['curr_ratio'] > 1.2 and res['fcf_ttm'] < 0:
-            alerts.append("🌫️ **False Safety:** El ratio de liquidez se ve bien, pero la empresa está perdiendo caja operativa. Es una seguridad temporal.")
-
-        # 5. ESCENARIOS DE DEUDA Y MÁRGENES
-        if res['debt_to_equity'] > 200:
-            if res['margins'] > 0.20:
-                alerts.append(f"🏢 **Managed Leverage:** Deuda alta, pero los márgenes ({res['margins']:.1%}) son el escudo protector contra intereses.")
-            else:
-                alerts.append("🚨 **Extreme Debt Stress:** Alta deuda con márgenes pobres. La empresa es un esclavo de sus acreedores.")
-
-        # 6. ESCENARIOS DE EFICIENCIA OPERATIVA
-        if res['rev_growth'] < 0 and res['earn_growth'] > 0:
-            alerts.append("✂️ **Margin Expansion Play:** Ganando más dinero con menos ventas. Indica un recorte de costos brutal o mayor eficiencia.")
-
-        # Despliegue de Alertas
         if alerts:
             with st.expander("🔍 ORCA Intelligence: Risk & Quality Diagnosis", expanded=True):
                 for a in alerts:
-                    if any(icon in a for icon in ["💎", "✨", "🐂", "🔄", "✂️"]):
-                        st.info(a)
-                    elif any(icon in a for icon in ["⚠️", "🧪", "🚀", "🌫️"]):
-                        st.warning(a)
-                    else:
-                        st.error(a)
+                    if any(icon in a for icon in ["💎", "✨", "🐂", "🔄", "✂️"]): st.info(a)
+                    elif any(icon in a for icon in ["⚠️", "🧪", "🚀", "🌫️"]): st.warning(a)
+                    else: st.error(a)
 
         # Fila 2: Modelos de Valuación
         st.subheader("🛠️ Valuation Models")
@@ -100,7 +66,7 @@ if ticker:
         m2.write(f"**MR (Mean Reversion):** ${res['mr']:.2f}")
         m3.write(f"**Hold/Sell Threshold:** ${res['sell_threshold']:.2f}")
 
-        # Fila 3: Métricas y Exposición
+        # Fila 3: Métricas, Value Drivers y Exposición
         st.divider()
         col_qs, col_metrics, col_exposure = st.columns([1, 1.8, 1.2])
         
@@ -111,28 +77,29 @@ if ticker:
 
         with col_metrics:
             st.markdown("### 📊 Fundamental Analytics")
-            ma1, ma2 = st.columns(2)
+            ma1, ma2, ma3 = st.columns(3)
             with ma1:
                 st.write("**Solvency & Efficiency**")
                 st.write(f"Current Ratio: `{res['curr_ratio']:.2f}`")
                 st.write(f"Debt to Equity: `{res['debt_to_equity']:.2f}%`")
                 st.write(f"ROE: `{res['roe']:.2%}`")
-                st.write(f"Op. Margins: `{res['margins']:.2%}`")
             with ma2:
                 st.write("**Growth & Cash Flow**")
-                st.write(f"Revenue Growth: `{res['rev_growth']:.2%}`")
-                st.write(f"Earnings Growth: `{res['earn_growth']:.2%}`")
+                st.write(f"Rev Growth: `{res['rev_growth']:.2%}`")
                 st.write(f"FCF TTM: `${res['fcf_ttm']:,.0f}`")
                 st.write(f"FCF CAGR: `{res['growth']:.2%}`")
+            with ma3:
+                st.write("**Value Drivers**")
+                st.write(f"EPS TTM: `${res['eps_ttm']:.2f}`")
+                st.write(f"FCF/SH: `${res['fcf_share']:.2f}`")
+                st.write(f"Margins: `{res['margins']:.2%}`")
 
         with col_exposure:
             st.markdown("### 🧱 Recommended Exposure")
             weights = {"Gem 💎": "15%", "Core": "10%", "Standard": "5%", "Speculative": "2%", "Avoid": "0%"}
             max_w = weights.get(res['category'], "0%")
-            st.markdown(f"**Max Weight per Position:** `{max_w}`")
-            
-            tier_limit = {"Gem 💎": "60%", "Core": "50%", "Standard": "30%", "Speculative": "10%", "Avoid": "0%"}
-            st.info(f"**Portfolio Limit ({res['category']}):** {tier_limit.get(res['category'], '0%')}")
+            st.markdown(f"**Max Weight:** `{max_w}`")
+            st.info(f"**Portfolio Limit:** {res['category']}")
 
 else:
     st.info("Enter a ticker symbol to start analysis.")
