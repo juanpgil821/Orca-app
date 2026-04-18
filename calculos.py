@@ -35,42 +35,33 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     price = info.get("currentPrice", 0)
     shares = info.get("sharesOutstanding", 0)
     
-    # --- MODELO 1: DCF ---
+    # --- MODELO 1: DCF (Detección de FCF Crítico) ---
     cf = stock.cashflow
     growth, fcf_ttm = 0, 0
     if cf is not None and not cf.empty:
         op = get_row(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
         cap = get_row(cf, ["Capital Expenditures", "Capital Expenditure"])
         if op is not None and cap is not None:
-            # FCF Histórico para crecimiento (Capex es negativo en YF, por eso se suma)
             fcf_h = (op + cap).dropna()
             if len(fcf_h) >= 2:
-                growth = (fcf_h.iloc[0] / fcf_h.iloc[-1]) ** (1 / (len(fcf_h)-1)) - 1
-    
-    qcf = stock.quarterly_cashflow
-    if qcf is not None and not qcf.empty:
-        op_q = get_row(qcf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
-        cap_q = get_row(qcf, ["Capital Expenditures", "Capital Expenditure"])
-        if op_q is not None and cap_q is not None:
-            fcf_ttm = op_q.iloc[:4].sum() + cap_q.iloc[:4].sum()
+                try:
+                    # Si el FCF inicial es <= 0, el CAGR no es calculable linealmente
+                    if fcf_h.iloc[-1] > 0:
+                        growth = (fcf_h.iloc[0] / fcf_h.iloc[-1]) ** (1 / (len(fcf_h)-1)) - 1
+                    else:
+                        growth = -0.50 # Penalización por histórico negativo
+                except:
+                    growth = 0
+            fcf_ttm = fcf_h.iloc[:4].sum() if len(fcf_h) >= 1 else 0
 
-    intrinsic_dcf = None
-    if fcf_ttm and shares and shares > 0:
-        g_capped = max(0.0, min(growth if growth else 0, 0.10))
-        fcf_share = fcf_ttm / shares
-        pfcf_curr = price / fcf_share if fcf_share != 0 else 20
-        pv = sum([fcf_ttm * ((1 + g_capped)**t) / ((1 + discount_rate)**t) for t in range(1, 6)])
-        tv = (fcf_ttm * ((1 + g_capped)**5) * pfcf_curr) / ((1 + discount_rate)**5)
-        intrinsic_dcf = (pv + tv) / shares
-
-    # --- MODELO 2: MEAN REVERSION (MR) ---
+    # --- MODELO 2: MEAN REVERSION ---
     eps_ttm = info.get("trailingEps", 0)
     pe_curr = info.get("trailingPE", 20)
     pe_fwd = info.get("forwardPE", 15)
     pe_avg = (pe_curr + pe_fwd) / 2 if (pe_curr and pe_fwd) else 20
-    mr_intrinsic = eps_ttm * pe_avg if eps_ttm else price
+    mr_intrinsic = eps_ttm * pe_avg if eps_ttm and eps_ttm > 0 else 0
 
-    # --- MÉTRICAS PARA DIAGNÓSTICO (Nombres exactos del main.py) ---
+    # --- MÉTRICAS DE SALUD FINANCIERA ---
     def safe_num(key):
         val = info.get(key, 0)
         return val if isinstance(val, (int, float, np.number)) and val is not None else 0
@@ -91,35 +82,20 @@ def run_orca_logic(ticker_symbol, discount_rate=0.15):
     qs_category = classify_qs(qs_value)
 
     # --- VALUACIÓN FINAL ---
-    valid_models = [v for v in [intrinsic_dcf, mr_intrinsic] if v is not None and v > 0]
-    final_intrinsic = np.mean(valid_models) if valid_models else price
+    valid_models = [v for v in [intrinsic_dcf if 'intrinsic_dcf' in locals() else None, mr_intrinsic] if v is not None and v > 0]
+    final_intrinsic = np.mean(valid_models) if valid_models else (price * 0.5 if roe < 0 else price)
 
-    # --- SEÑAL Y UMBRAL ---
     sell_threshold = final_intrinsic * 1.20
-    if price < final_intrinsic:
-        signal = "REJECTED" if qs_value < 30 else f"BUY ({qs_category})"
-    elif price < sell_threshold:
-        signal = "HOLD"
-    else:
-        signal = "SELL"
+    signal = "REJECTED" if qs_value < 30 or roe < 0 else ("BUY" if price < final_intrinsic else "HOLD")
 
     return {
-        "price": price, 
-        "intrinsic": final_intrinsic, 
-        "signal": signal,
-        "dcf": intrinsic_dcf, 
-        "mr": mr_intrinsic, 
-        "sell_threshold": sell_threshold,
-        "qs": qs_value, 
-        "category": qs_category,
-        "roe": roe, 
-        "margins": margins, 
-        "debt_to_equity": debt_to_equity,
-        "curr_ratio": curr_ratio, 
-        "fcf_ttm": fcf_ttm, 
-        "growth": growth,
-        "rev_growth": rev_growth, 
-        "earn_growth": earn_growth
+        "price": price, "intrinsic": final_intrinsic, "signal": signal,
+        "dcf": intrinsic_dcf if 'intrinsic_dcf' in locals() else 0, 
+        "mr": mr_intrinsic, "sell_threshold": sell_threshold,
+        "qs": qs_value, "category": qs_category,
+        "roe": roe, "margins": margins, "debt_to_equity": debt_to_equity,
+        "curr_ratio": curr_ratio, "fcf_ttm": fcf_ttm, "growth": growth,
+        "rev_growth": rev_growth, "earn_growth": earn_growth
     }
 
 
