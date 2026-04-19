@@ -77,135 +77,133 @@ if d:
 
     st.markdown("---")
 
-    # --- ORCA INTELLIGENCE (EXPLICATIVO PRO) ---
+    # --- ORCA INTELLIGENCE (EXPLICATIVO) ---
+    roe = d.get('roe', 0) / 100
+    margin = d.get('op_m', 0) / 100
+    rev_g = d.get('rev_g', 0) / 100
+    de = d.get('de', 0)
+    cr = d.get('cr', 0)
 
-roe = d.get('roe', 0) / 100
-margin = d.get('op_m', 0) / 100
-rev_g = d.get('rev_g', 0) / 100
-de = d.get('de', 0)
-cr = d.get('cr', 0)
+    alerts = []
 
-alerts = []
+    # 🟢 CALIDAD ALTA
+    if roe > 0.25 and margin > 0.25 and de < 100:
+        alerts.append(
+            "💎 Elite Compounder:\n"
+            "→ ROE alto: la empresa genera mucho beneficio por cada dólar de capital.\n"
+            "→ Márgenes altos: fuerte pricing power o estructura de costos eficiente.\n"
+            "→ Baja deuda: menor riesgo financiero.\n"
+            "✔ Conclusión: negocio capaz de reinvertir a altas tasas durante largos periodos."
+        )
 
-# 🟢 CALIDAD ALTA
-if roe > 0.25 and margin > 0.25 and de < 100:
-    alerts.append(
-        "💎 Elite Compounder:\n"
-        "→ ROE alto indica que la empresa convierte eficientemente el capital en beneficios.\n"
-        "→ Márgenes altos sugieren fuerte pricing power o costos muy controlados.\n"
-        "→ Baja deuda reduce el riesgo financiero.\n"
-        "✔ Conclusión: negocio capaz de reinvertir y crecer de forma sostenible durante años."
-    )
+    if roe > 0.30 and margin > 0.20:
+        alerts.append(
+            "🏭 Capital Efficiency Engine:\n"
+            "→ ROE elevado: excelente retorno sobre el capital invertido.\n"
+            "→ Márgenes sólidos: eficiencia operativa.\n"
+            "✔ Conclusión: management altamente eficiente."
+        )
 
-if roe > 0.30 and margin > 0.20:
-    alerts.append(
-        "🏭 Capital Efficiency Engine:\n"
-        "→ ROE elevado significa alto retorno por dólar invertido.\n"
-        "→ Márgenes sólidos indican eficiencia operativa.\n"
-        "✔ Conclusión: management altamente eficiente en asignación de capital."
-    )
+    if margin > 0.30:
+        alerts.append(
+            "📈 High Margin Business:\n"
+            "→ La empresa retiene gran parte de sus ingresos como beneficio.\n"
+            "→ Indica ventaja competitiva (marca, tecnología, moat).\n"
+            "✔ Conclusión: fuerte capacidad de fijación de precios."
+        )
 
-if margin > 0.30:
-    alerts.append(
-        "📈 High Margin Business:\n"
-        "→ Márgenes altos significan que la empresa retiene gran parte de cada dólar de ingreso.\n"
-        "→ Esto suele indicar ventaja competitiva (marca, tecnología o monopolio parcial).\n"
-        "✔ Conclusión: fuerte capacidad de fijación de precios."
-    )
+    if roe > 0.20 and de < 100:
+        alerts.append(
+            "🛡️ Financially Strong:\n"
+            "→ Rentabilidad consistente (ROE alto).\n"
+            "→ Deuda controlada.\n"
+            "✔ Conclusión: balance sólido y sostenible."
+        )
 
-if roe > 0.20 and de < 100:
-    alerts.append(
-        "🛡️ Financially Strong:\n"
-        "→ ROE saludable muestra rentabilidad consistente.\n"
-        "→ Deuda controlada evita que esa rentabilidad dependa de apalancamiento.\n"
-        "✔ Conclusión: negocio sólido y bien balanceado."
-    )
+    # 🟡 MIXTOS
+    if rev_g > 0.10 and margin < 0.15:
+        alerts.append(
+            "⚖️ Growth Without Margins:\n"
+            "→ Crece en ingresos pero no en beneficios.\n"
+            "→ Márgenes bajos sugieren ineficiencia o falta de escala.\n"
+            "✔ Conclusión: crecimiento aún no rentable."
+        )
 
-# 🟡 ZONAS MIXTAS
-if rev_g > 0.10 and margin < 0.15:
-    alerts.append(
-        "⚖️ Growth Without Margins:\n"
-        "→ La empresa crece en ingresos, pero no convierte ventas en beneficios.\n"
-        "→ Márgenes bajos indican costos elevados o falta de escala.\n"
-        "✔ Conclusión: crecimiento aún no rentable (riesgo de modelo inmaduro)."
-    )
+    if roe > 0.20 and de > 150:
+        alerts.append(
+            "🧪 Leveraged Quality:\n"
+            "→ ROE alto pero impulsado por deuda.\n"
+            "→ Apalancamiento aumenta riesgo.\n"
+            "✔ Conclusión: calidad condicionada al endeudamiento."
+        )
 
-if roe > 0.20 and de > 150:
-    alerts.append(
-        "🧪 Leveraged Quality:\n"
-        "→ ROE alto puede estar impulsado por deuda.\n"
-        "→ Deuda elevada amplifica retornos… pero también el riesgo.\n"
-        "✔ Conclusión: calidad aparente, pero dependiente del apalancamiento."
-    )
+    if margin > 0.20 and rev_g < 0.05:
+        alerts.append(
+            "🐢 Mature Cash Cow:\n"
+            "→ Alta rentabilidad (márgenes fuertes).\n"
+            "→ Bajo crecimiento en ingresos.\n"
+            "✔ Conclusión: negocio maduro que genera caja pero crece poco."
+        )
 
-if margin > 0.20 and rev_g < 0.05:
-    alerts.append(
-        "🐢 Mature Cash Cow:\n"
-        "→ Márgenes altos indican negocio rentable.\n"
-        "→ Bajo crecimiento en ingresos sugiere saturación del mercado.\n"
-        "✔ Conclusión: empresa madura que genera caja pero crece poco."
-    )
+    if cr < 1 and de < 150:
+        alerts.append(
+            "🏢 Working Capital Efficiency:\n"
+            "→ Bajo capital circulante (CR bajo).\n"
+            "→ Puede indicar eficiencia operativa.\n"
+            "✔ Conclusión: modelo optimizado, pero requiere monitoreo."
+        )
 
-if cr < 1 and de < 150:
-    alerts.append(
-        "🏢 Working Capital Efficiency:\n"
-        "→ Current Ratio bajo indica poco capital circulante.\n"
-        "→ Si la deuda es controlada, puede ser eficiencia operativa (ej: retailers grandes).\n"
-        "✔ Conclusión: modelo eficiente en uso de capital, pero requiere monitoreo."
-    )
+    # 🔴 RIESGOS
+    if roe < 0.10 and margin < 0.10:
+        alerts.append(
+            "🪤 Weak Business:\n"
+            "→ Baja rentabilidad sobre capital.\n"
+            "→ Márgenes débiles.\n"
+            "✔ Conclusión: negocio estructuralmente débil."
+        )
 
-# 🔴 RIESGOS
-if roe < 0.10 and margin < 0.10:
-    alerts.append(
-        "🪤 Weak Business:\n"
-        "→ Baja rentabilidad sobre capital (ROE bajo).\n"
-        "→ Márgenes débiles indican poca eficiencia o presión competitiva.\n"
-        "✔ Conclusión: negocio estructuralmente débil."
-    )
+    if roe < 0.08 and rev_g < 0.05:
+        alerts.append(
+            "🪤 Value Trap Risk:\n"
+            "→ Sin crecimiento.\n"
+            "→ Bajo retorno sobre capital.\n"
+            "✔ Conclusión: parece barato pero sin catalizadores."
+        )
 
-if roe < 0.08 and rev_g < 0.05:
-    alerts.append(
-        "🪤 Value Trap Risk:\n"
-        "→ No hay crecimiento relevante.\n"
-        "→ ROE bajo indica pobre generación de valor.\n"
-        "✔ Conclusión: parece barato, pero sin catalizadores reales."
-    )
+    if de > 200:
+        alerts.append(
+            "⚠️ Debt Overhang:\n"
+            "→ Alto nivel de deuda.\n"
+            "✔ Conclusión: riesgo financiero elevado."
+        )
 
-if de > 200:
-    alerts.append(
-        "⚠️ Debt Overhang:\n"
-        "→ Alto nivel de deuda.\n"
-        "→ Aumenta el riesgo de insolvencia y limita flexibilidad.\n"
-        "✔ Conclusión: estructura financiera frágil."
-    )
+    if cr < 0.8:
+        alerts.append(
+            "💧 Liquidity Risk:\n"
+            "→ Dificultad para cubrir obligaciones de corto plazo.\n"
+            "✔ Conclusión: posible estrés financiero."
+        )
 
-if cr < 0.8:
-    alerts.append(
-        "💧 Liquidity Risk:\n"
-        "→ Current Ratio bajo significa dificultad para cubrir obligaciones de corto plazo.\n"
-        "✔ Conclusión: riesgo de tensión financiera inmediata."
-    )
+    if roe < 0:
+        alerts.append(
+            "🔥 Capital Destruction:\n"
+            "→ ROE negativo.\n"
+            "✔ Conclusión: destrucción de valor para el accionista."
+        )
 
-if roe < 0:
-    alerts.append(
-        "🔥 Capital Destruction:\n"
-        "→ ROE negativo significa que el capital invertido está generando pérdidas.\n"
-        "✔ Conclusión: destrucción de valor para el accionista."
-    )
+    if margin <= 0:
+        alerts.append(
+            "💀 No Profitability:\n"
+            "→ Márgenes negativos.\n"
+            "✔ Conclusión: negocio no rentable."
+        )
 
-if margin <= 0:
-    alerts.append(
-        "💀 No Profitability:\n"
-        "→ Márgenes negativos indican que el negocio pierde dinero en operaciones.\n"
-        "✔ Conclusión: modelo no sostenible sin cambios."
-    )
-
-if roe < 0 and margin < 0 and rev_g < 0:
-    alerts.append(
-        "💀 Zombie Company:\n"
-        "→ Sin crecimiento, sin rentabilidad y con pérdidas.\n"
-        "✔ Conclusión: empresa económicamente inviable."
-    )
+    if roe < 0 and margin < 0 and rev_g < 0:
+        alerts.append(
+            "💀 Zombie Company:\n"
+            "→ Sin crecimiento, sin márgenes, sin rentabilidad.\n"
+            "✔ Conclusión: empresa no viable."
+        )
 
     # --- RENDER ---
     if alerts:
@@ -253,4 +251,3 @@ if roe < 0 and margin < 0 and rev_g < 0:
 
 else:
     st.info("Introduce un Ticker y carga métricas.")
-
