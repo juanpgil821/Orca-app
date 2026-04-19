@@ -32,6 +32,11 @@ with st.sidebar:
     val_mr = st.number_input("Valor MR (Sheets)", min_value=0.0, step=0.1)
     qs_sheets = st.slider("Quality Score (QS)", 0, 100, 75)
     
+    st.subheader("Métricas Manuales (Input)")
+    m_eps_g = st.number_input("EPS Growth TTM (%)", value=0.0)
+    m_bb_y = st.number_input("Buyback Yield (%)", value=0.0)
+    m_fcf_y = st.number_input("FCF Yield (%)", value=0.0)
+    
     st.markdown("---")
     
     if st.button("🚀 Cargar Métricas de Mercado"):
@@ -44,9 +49,10 @@ with st.sidebar:
                 'eps_ttm': raw.get('trailingEps', 0.0),
                 'cr': raw.get('currentRatio', 0.0),
                 'de': raw.get('debtToEquity', 0.0),
-                'roe': raw.get('returnOnEquity', 0.0) * 100,
-                'rev_g': raw.get('revenueGrowth', 0.0) * 100,
-                'op_m': raw.get('operatingMargins', 0.0) * 100
+                'roe': (raw.get('returnOnEquity', 0.0) or 0.0) * 100,
+                'rev_g': (raw.get('revenueGrowth', 0.0) or 0.0) * 100,
+                'op_m': (raw.get('operatingMargins', 0.0) or 0.0) * 100,
+                'div_y': (raw.get('dividendYield', 0.0) or 0.0) * 100
             }
         except Exception as e:
             st.error(f"Error al conectar con la API: {e}")
@@ -55,166 +61,117 @@ with st.sidebar:
 d = st.session_state.get('data', {})
 
 if d:
-    st.subheader(f"📊 Fundamentales: {ticker_input}")
+    st.subheader(f"📊 Panel de Control: {ticker_input}")
     
-    # Fila 1
+    # FILA 1: MERCADO
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Precio", f"${d.get('price', 0):.2f}")
     c2.metric("Shares (B)", f"{d.get('shares', 0) / 1e9:.3f}B")
     c3.metric("P/E TTM", f"{d.get('pe_ttm', 0):.2f}x")
     c4.metric("EPS TTM", f"${d.get('eps_ttm', 0):.2f}")
 
-    # Fila 2
+    # FILA 2: CALIDAD (API)
     c5, c6, c7, c8 = st.columns(4)
     c5.metric("Current Ratio", f"{d.get('cr', 0):.2f}")
-    c6.metric("Debt to Equity", f"{d.get('de', 0):.2f}%")
+    c6.metric("Debt/Equity", f"{d.get('de', 0):.2f}%")
     c7.metric("ROE", f"{d.get('roe', 0):.1f}%")
     c8.metric("Operating Margin", f"{d.get('op_m', 0):.1f}%")
 
-    # Fila 3
-    c9 = st.columns(1)[0]
-    c9.metric("Rev. Growth (YoY)", f"{d.get('rev_g', 0):.1f}%")
+    # FILA 3: FUTURO (HÍBRIDO API + MANUAL)
+    c9, c10, c11, c12 = st.columns(4)
+    c9.metric("Rev. Growth", f"{d.get('rev_g', 0):.1f}%")
+    c10.metric("EPS Growth (M)", f"{m_eps_g:.1f}%")
+    c11.metric("Buyback Yield (M)", f"{m_bb_y:.1f}%")
+    c12.metric("FCF Yield (M)", f"{m_fcf_y:.1f}%")
 
     st.markdown("---")
 
-    # --- ORCA INTELLIGENCE (EXPLICATIVO) ---
+    # --- ORCA INTELLIGENCE (20 CATEGORÍAS) ---
     roe = d.get('roe', 0) / 100
     margin = d.get('op_m', 0) / 100
     rev_g = d.get('rev_g', 0) / 100
     de = d.get('de', 0)
     cr = d.get('cr', 0)
+    div_y = d.get('div_y', 0)
+    
+    # Inputs manuales convertidos a decimal
+    eps_g = m_eps_g / 100
+    bb_y = m_bb_y / 100
+    fcf_y = m_fcf_y / 100
+    total_yield = bb_y + div_y
 
     alerts = []
 
-    # 🟢 CALIDAD ALTA
+    # 🟢 SEÑALES DE FORTALEZA
     if roe > 0.25 and margin > 0.25 and de < 100:
-        alerts.append(
-            "💎 Elite Compounder:\n"
-            "→ ROE alto: la empresa genera mucho beneficio por cada dólar de capital.\n"
-            "→ Márgenes altos: fuerte pricing power o estructura de costos eficiente.\n"
-            "→ Baja deuda: menor riesgo financiero.\n"
-            "✔ Conclusión: negocio capaz de reinvertir a altas tasas durante largos periodos."
-        )
+        alerts.append("🟢 **Elite Compounder:** Rentabilidad y márgenes elevados con baja deuda. Negocio capaz de reinvertir a altas tasas.")
 
     if roe > 0.30 and margin > 0.20:
-        alerts.append(
-            "🏭 Capital Efficiency Engine:\n"
-            "→ ROE elevado: excelente retorno sobre el capital invertido.\n"
-            "→ Márgenes sólidos: eficiencia operativa.\n"
-            "✔ Conclusión: management altamente eficiente."
-        )
+        alerts.append("🟢 **Capital Efficiency Engine:** Management altamente eficiente en el uso del capital de los accionistas.")
 
-    if margin > 0.30:
-        alerts.append(
-            "📈 High Margin Business:\n"
-            "→ La empresa retiene gran parte de sus ingresos como beneficio.\n"
-            "→ Indica ventaja competitiva (marca, tecnología, moat).\n"
-            "✔ Conclusión: fuerte capacidad de fijación de precios."
-        )
+    if eps_g > 0.15 and roe > 0.20:
+        alerts.append("🟢 **High Quality Growth:** Crecimiento fuerte de beneficios respaldado por una rentabilidad real.")
 
-    if roe > 0.20 and de < 100:
-        alerts.append(
-            "🛡️ Financially Strong:\n"
-            "→ Rentabilidad consistente (ROE alto).\n"
-            "→ Deuda controlada.\n"
-            "✔ Conclusión: balance sólido y sostenible."
-        )
+    if margin > 0.30 and rev_g > 0.10:
+        alerts.append("🟢 **Scalable Model:** El negocio crece con fuerza manteniendo márgenes de élite. Fuerte pricing power.")
 
-    # 🟡 MIXTOS
-    if rev_g > 0.10 and margin < 0.15:
-        alerts.append(
-            "⚖️ Growth Without Margins:\n"
-            "→ Crece en ingresos pero no en beneficios.\n"
-            "→ Márgenes bajos sugieren ineficiencia o falta de escala.\n"
-            "✔ Conclusión: crecimiento aún no rentable."
-        )
+    if fcf_y > 0.07 and margin > 0.20:
+        alerts.append("🟢 **Cash Flow Machine:** Generación masiva de caja operativa. Capacidad total de autofinanciación.")
 
-    if roe > 0.20 and de > 150:
-        alerts.append(
-            "🧪 Leveraged Quality:\n"
-            "→ ROE alto pero impulsado por deuda.\n"
-            "→ Apalancamiento aumenta riesgo.\n"
-            "✔ Conclusión: calidad condicionada al endeudamiento."
-        )
+    if total_yield > 0.06:
+        alerts.append("🟢 **Shareholder Yield Alpha:** Alta retribución al accionista mediante dividendos y recompras.")
+
+    if de < 50 and cr > 1.5:
+        alerts.append("🟢 **Financially Strong:** Balance blindado. Baja deuda y alta liquidez inmediata.")
+
+    if fcf_y > (1/d.get('pe_ttm', 1) if d.get('pe_ttm', 0) > 0 else 0):
+        alerts.append("🟢 **Cash King:** La generación de caja real supera al beneficio contable reportado.")
+
+    # 🟡 SEÑALES DE ADVERTENCIA
+    if roe > 0.25 and de > 150:
+        alerts.append("🟡 **Leveraged Quality:** Rentabilidad alta pero impulsada por un endeudamiento agresivo.")
+
+    if rev_g > 0.15 and margin < 0.10:
+        alerts.append("🟡 **Growth Without Profit:** Crecimiento rápido en ventas pero con incapacidad de retener beneficios.")
 
     if margin > 0.20 and rev_g < 0.05:
-        alerts.append(
-            "🐢 Mature Cash Cow:\n"
-            "→ Alta rentabilidad (márgenes fuertes).\n"
-            "→ Bajo crecimiento en ingresos.\n"
-            "✔ Conclusión: negocio maduro que genera caja pero crece poco."
-        )
+        alerts.append("🟡 **Mature Cash Cow:** Negocio muy rentable pero estancado en su capacidad de expansión.")
 
-    if cr < 1 and de < 150:
-        alerts.append(
-            "🏢 Working Capital Efficiency:\n"
-            "→ Bajo capital circulante (CR bajo).\n"
-            "→ Puede indicar eficiencia operativa.\n"
-            "✔ Conclusión: modelo optimizado, pero requiere monitoreo."
-        )
+    if cr < 0.9 and (d.get('price', 0) * d.get('shares', 0)) > 20e9:
+        alerts.append("🟡 **Working Capital King:** Liquidez baja típica de gigantes operativos eficientes (modelo Amazon/Walmart).")
 
-    # 🔴 RIESGOS
-    if roe < 0.10 and margin < 0.10:
-        alerts.append(
-            "🪤 Weak Business:\n"
-            "→ Baja rentabilidad sobre capital.\n"
-            "→ Márgenes débiles.\n"
-            "✔ Conclusión: negocio estructuralmente débil."
-        )
+    if eps_g > 0.20 and roe < 0.10:
+        alerts.append("🟡 **Turnaround Play:** Fuerte crecimiento de beneficios pero la rentabilidad sobre el capital aún es débil.")
 
-    if roe < 0.08 and rev_g < 0.05:
-        alerts.append(
-            "🪤 Value Trap Risk:\n"
-            "→ Sin crecimiento.\n"
-            "→ Bajo retorno sobre capital.\n"
-            "✔ Conclusión: parece barato pero sin catalizadores."
-        )
+    if eps_g > 0.15 and fcf_y < 0.02:
+        alerts.append("🟡 **Earnings Quality Warning:** Los beneficios crecen en papel, pero el dinero real (FCF) no está entrando.")
 
-    if de > 200:
-        alerts.append(
-            "⚠️ Debt Overhang:\n"
-            "→ Alto nivel de deuda.\n"
-            "✔ Conclusión: riesgo financiero elevado."
-        )
+    # 🔴 SEÑALES DE RIESGO
+    if rev_g < 0.05 and roe < 0.10:
+        alerts.append("🔴 **Classic Value Trap:** Parece barato por múltiplos pero el negocio no tiene momentum ni rentabilidad.")
 
-    if cr < 0.8:
-        alerts.append(
-            "💧 Liquidity Risk:\n"
-            "→ Dificultad para cubrir obligaciones de corto plazo.\n"
-            "✔ Conclusión: posible estrés financiero."
-        )
+    if de > 200 and roe < 0.15:
+        alerts.append("🔴 **Debt Overhang:** La carga de deuda es excesiva para el retorno que genera la operación.")
+
+    if cr < 0.8 and (d.get('price', 0) * d.get('shares', 0)) < 20e9:
+        alerts.append("🔴 **Liquidity Stress:** Riesgo de insolvencia a corto plazo. No cubre sus obligaciones corrientes.")
 
     if roe < 0:
-        alerts.append(
-            "🔥 Capital Destruction:\n"
-            "→ ROE negativo.\n"
-            "✔ Conclusión: destrucción de valor para el accionista."
-        )
+        alerts.append("🔴 **Capital Destroyer:** La empresa está quemando el capital de los accionistas. ROE negativo.")
 
-    if margin <= 0:
-        alerts.append(
-            "💀 No Profitability:\n"
-            "→ Márgenes negativos.\n"
-            "✔ Conclusión: negocio no rentable."
-        )
+    if total_yield > 0.05 and fcf_y < 0.03:
+        alerts.append("🔴 **Yield Trap Risk:** El dividendo o las recompras son insostenibles; se pagan con deuda o caja finita.")
 
-    if roe < 0 and margin < 0 and rev_g < 0:
-        alerts.append(
-            "💀 Zombie Company:\n"
-            "→ Sin crecimiento, sin márgenes, sin rentabilidad.\n"
-            "✔ Conclusión: empresa no viable."
-        )
+    if rev_g < 0 and margin < 0 and roe < 0:
+        alerts.append("🔴 **Zombie Mode:** Empresa en muerte cerebral: sin crecimiento, sin márgenes y sin rentabilidad.")
 
-    # --- RENDER ---
+    # RENDER DE ALERTAS
     if alerts:
-        with st.expander("🔍 ORCA Intelligence", expanded=True):
+        with st.expander("🔍 ORCA Intelligence: Diagnóstico del Analista Senior", expanded=True):
             for a in alerts:
-                if any(icon in a for icon in ["💎","🏭","📈","🛡️"]):
-                    st.info(a)
-                elif any(icon in a for icon in ["⚖️","🧪","🐢","🏢"]):
-                    st.warning(a)
-                else:
-                    st.error(a)
+                if "🟢" in a: st.info(a)
+                elif "🟡" in a: st.warning(a)
+                else: st.error(a)
 
     st.markdown("---")
 
@@ -245,9 +202,9 @@ if d:
                 st.warning(f"⚖️ HOLD ({qs_category})")
             else:
                 st.error(f"🚫 OVERVALUED ({qs_category})")
-
     else:
         st.info("Introduce DCF y MR desde Sheets.")
-
 else:
     st.info("Introduce un Ticker y carga métricas.")
+
+
