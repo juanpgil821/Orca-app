@@ -4,33 +4,32 @@ import yfinance as yf
 # --- FUNCIONES AUXILIARES ---
 
 def classify_qs(qs):
-    if qs is None:
-        return "Unknown"
-    elif qs >= 90:
-        return "Gem 💎"
-    elif qs >= 70:
-        return "Core"
-    elif qs >= 40:
-        return "Standard"
-    elif qs >= 30:
-        return "Speculative"
-    else:
-        return "Avoid"
+    if qs is None: return "Unknown"
+    elif qs >= 90: return "Gem 💎"
+    elif qs >= 70: return "Core"
+    elif qs >= 40: return "Standard"
+    elif qs >= 30: return "Speculative"
+    else: return "Avoid"
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="ORCA Terminal 2.0", layout="wide", page_icon="🚢")
 st.title("🚢 ORCA 2.0: Terminal de Ejecución e Inteligencia")
 st.markdown("---")
 
-# --- SIDEBAR ---
+# --- SIDEBAR: DATOS VALIDADOS ---
 with st.sidebar:
     st.header("📥 Datos Validados (Sheets)")
     ticker_input = st.text_input("Introduce Ticker", value="ADBE").upper()
     
-    st.subheader("Valuación de Sheets")
-    val_dcf = st.number_input("Valor DCF (Sheets)", min_value=0.0, step=0.1)
-    val_mr = st.number_input("Valor MR (Sheets)", min_value=0.0, step=0.1)
+    st.subheader("Valuación")
+    val_dcf = st.number_input("Valor DCF", min_value=0.0, step=0.1)
+    val_mr = st.number_input("Valor MR", min_value=0.0, step=0.1)
     qs_sheets = st.slider("Quality Score (QS)", 0, 100, 75)
+    
+    st.subheader("Métricas Manuales (Validadas)")
+    m_eps_g = st.number_input("EPS Growth TTM (%)", value=0.0)
+    m_bb_y = st.number_input("Buyback Yield (%)", value=0.0)
+    m_fcf_y = st.number_input("FCF Yield (%)", value=0.0)
     
     st.markdown("---")
     
@@ -45,209 +44,104 @@ with st.sidebar:
                 'cr': raw.get('currentRatio', 0.0),
                 'de': raw.get('debtToEquity', 0.0),
                 'roe': raw.get('returnOnEquity', 0.0) * 100,
+                'op_m': raw.get('operatingMargins', 0.0) * 100,
                 'rev_g': raw.get('revenueGrowth', 0.0) * 100,
-                'op_m': raw.get('operatingMargins', 0.0) * 100
+                'div_y': (raw.get('dividendYield', 0.0) or 0.0) * 100
             }
         except Exception as e:
-            st.error(f"Error al conectar con la API: {e}")
+            st.error(f"Error: {e}")
 
-# --- PANEL CENTRAL ---
+# --- PANEL CENTRAL: 12 VARIABLES ---
 d = st.session_state.get('data', {})
 
 if d:
-    st.subheader(f"📊 Fundamentales: {ticker_input}")
+    st.subheader(f"📊 Panel de Control: {ticker_input}")
     
-    # Fila 1
+    # Fila 1: Mercado
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Precio", f"${d.get('price', 0):.2f}")
-    c2.metric("Shares (B)", f"{d.get('shares', 0) / 1e9:.3f}B")
-    c3.metric("P/E TTM", f"{d.get('pe_ttm', 0):.2f}x")
-    c4.metric("EPS TTM", f"${d.get('eps_ttm', 0):.2f}")
+    c1.metric("Precio", f"${d['price']:.2f}")
+    c2.metric("Shares (B)", f"{d['shares']/1e9:.3f}B")
+    c3.metric("P/E TTM", f"{d['pe_ttm']:.2f}x")
+    c4.metric("EPS TTM", f"${d['eps_ttm']:.2f}")
 
-    # Fila 2
+    # Fila 2: Calidad
     c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Current Ratio", f"{d.get('cr', 0):.2f}")
-    c6.metric("Debt to Equity", f"{d.get('de', 0):.2f}%")
-    c7.metric("ROE", f"{d.get('roe', 0):.1f}%")
-    c8.metric("Operating Margin", f"{d.get('op_m', 0):.1f}%")
+    c5.metric("Current Ratio", f"{d['cr']:.2f}")
+    c6.metric("Debt/Equity", f"{d['de']:.1f}%")
+    c7.metric("ROE", f"{d['roe']:.1f}%")
+    c8.metric("Op. Margin", f"{d['op_m']:.1f}%")
 
-    # Fila 3
-    c9 = st.columns(1)[0]
-    c9.metric("Rev. Growth (YoY)", f"{d.get('rev_g', 0):.1f}%")
+    # Fila 3: Futuro (Híbrido API + Manual)
+    c9, c10, c11, c12 = st.columns(4)
+    c9.metric("Rev. Growth", f"{d['rev_g']:.1f}%")
+    c10.metric("EPS Growth (M)", f"{m_eps_g:.1f}%")
+    c11.metric("Buyback Yield (M)", f"{m_bb_y:.1f}%")
+    c12.metric("FCF Yield (M)", f"{m_fcf_y:.1f}%")
 
     st.markdown("---")
 
-    # --- ORCA INTELLIGENCE (EXPLICATIVO) ---
-    roe = d.get('roe', 0) / 100
-    margin = d.get('op_m', 0) / 100
-    rev_g = d.get('rev_g', 0) / 100
-    de = d.get('de', 0)
-    cr = d.get('cr', 0)
+    # --- ORCA INTELLIGENCE: LAS 20 CATEGORÍAS ---
+    roe, margin, rev_g, de, cr = d['roe']/100, d['op_m']/100, d['rev_g']/100, d['de'], d['cr']
+    eps_g, bb_y, fcf_y, div_y = m_eps_g/100, m_bb_y/100, m_fcf_y/100, d['div_y']/100
+    total_yield = bb_y + div_y
 
     alerts = []
 
-    # 🟢 CALIDAD ALTA
-    if roe > 0.25 and margin > 0.25 and de < 100:
-        alerts.append(
-            "💎 Elite Compounder:\n"
-            "→ ROE alto: la empresa genera mucho beneficio por cada dólar de capital.\n"
-            "→ Márgenes altos: fuerte pricing power o estructura de costos eficiente.\n"
-            "→ Baja deuda: menor riesgo financiero.\n"
-            "✔ Conclusión: negocio capaz de reinvertir a altas tasas durante largos periodos."
-        )
+    # 🟢 FORTALEZA
+    if roe > 0.25 and margin > 0.25 and de < 100: alerts.append("🟢 **Elite Compounder:** Rentabilidad y márgenes elevados con baja deuda.")
+    if roe > 0.30 and margin > 0.20: alerts.append("🟢 **Capital Efficiency Engine:** Management altamente eficiente en el uso del capital.")
+    if eps_g > 0.15 and roe > 0.20: alerts.append("🟢 **High Quality Growth:** Crecimiento fuerte respaldado por rentabilidad real.")
+    if margin > 0.30 and rev_g > 0.10: alerts.append("🟢 **Scalable Model:** El negocio crece sin sacrificar márgenes.")
+    if fcf_y > 0.07 and margin > 0.20: alerts.append("🟢 **Cash Flow Machine:** Generación masiva de caja operativa.")
+    if total_yield > 0.06: alerts.append("🟢 **Shareholder Yield Alpha:** Alta retribución al dueño vía dividendos/recompras.")
+    if de < 50 and cr > 1.5: alerts.append("🟢 **Financially Strong:** Balance blindado y gran liquidez.")
+    if fcf_y > (1/d['pe_ttm'] if d['pe_ttm']>0 else 0): alerts.append("🟢 **Cash King:** La caja real supera al beneficio contable.")
 
-    if roe > 0.30 and margin > 0.20:
-        alerts.append(
-            "🏭 Capital Efficiency Engine:\n"
-            "→ ROE elevado: excelente retorno sobre el capital invertido.\n"
-            "→ Márgenes sólidos: eficiencia operativa.\n"
-            "✔ Conclusión: management altamente eficiente."
-        )
+    # 🟡 ADVERTENCIA
+    if roe > 0.25 and de > 150: alerts.append("🟡 **Leveraged Quality:** Rentabilidad alta pero impulsada por deuda.")
+    if rev_g > 0.15 and margin < 0.10: alerts.append("🟡 **Growth Without Profit:** Crece en ventas pero no retiene beneficios.")
+    if margin > 0.20 and rev_g < 0.05: alerts.append("🟡 **Mature Cash Cow:** Negocio sólido pero con poco espacio de crecimiento.")
+    if cr < 0.9 and (d['price']*d['shares']) > 20e9: alerts.append("🟡 **Working Capital King:** CR bajo típico de gigantes eficientes.")
+    if eps_g > 0.20 and roe < 0.10: alerts.append("🟡 **Turnaround Play:** Expectativa de recuperación con rentabilidad aún débil.")
+    if eps_g > 0.15 and fcf_y < 0.02: alerts.append("🟡 **Earnings Quality Warning:** El beneficio crece en papel, pero la caja no entra.")
 
-    if margin > 0.30:
-        alerts.append(
-            "📈 High Margin Business:\n"
-            "→ La empresa retiene gran parte de sus ingresos como beneficio.\n"
-            "→ Indica ventaja competitiva (marca, tecnología, moat).\n"
-            "✔ Conclusión: fuerte capacidad de fijación de precios."
-        )
+    # 🔴 RIESGO
+    if rev_g < 0.05 and roe < 0.10: alerts.append("🔴 **Classic Value Trap:** Parece barato pero el negocio está estancado.")
+    if de > 200 and roe < 0.15: alerts.append("🔴 **Debt Overhang:** Carga de deuda excesiva para los retornos generados.")
+    if cr < 0.8 and (d['price']*d['shares']) < 20e9: alerts.append("🔴 **Liquidity Stress:** Riesgo de insolvencia a corto plazo.")
+    if roe < 0: alerts.append("🔴 **Capital Destroyer:** El negocio quema el dinero de los accionistas.")
+    if total_yield > 0.05 and fcf_y < 0.03: alerts.append("🔴 **Yield Trap Risk:** El retorno al accionista es insostenible frente al FCF.")
+    if rev_g < 0 and margin < 0 and roe < 0: alerts.append("🔴 **Zombie Mode:** Sin crecimiento, sin márgenes y sin rentabilidad.")
 
-    if roe > 0.20 and de < 100:
-        alerts.append(
-            "🛡️ Financially Strong:\n"
-            "→ Rentabilidad consistente (ROE alto).\n"
-            "→ Deuda controlada.\n"
-            "✔ Conclusión: balance sólido y sostenible."
-        )
-
-    # 🟡 MIXTOS
-    if rev_g > 0.10 and margin < 0.15:
-        alerts.append(
-            "⚖️ Growth Without Margins:\n"
-            "→ Crece en ingresos pero no en beneficios.\n"
-            "→ Márgenes bajos sugieren ineficiencia o falta de escala.\n"
-            "✔ Conclusión: crecimiento aún no rentable."
-        )
-
-    if roe > 0.20 and de > 150:
-        alerts.append(
-            "🧪 Leveraged Quality:\n"
-            "→ ROE alto pero impulsado por deuda.\n"
-            "→ Apalancamiento aumenta riesgo.\n"
-            "✔ Conclusión: calidad condicionada al endeudamiento."
-        )
-
-    if margin > 0.20 and rev_g < 0.05:
-        alerts.append(
-            "🐢 Mature Cash Cow:\n"
-            "→ Alta rentabilidad (márgenes fuertes).\n"
-            "→ Bajo crecimiento en ingresos.\n"
-            "✔ Conclusión: negocio maduro que genera caja pero crece poco."
-        )
-
-    if cr < 1 and de < 150:
-        alerts.append(
-            "🏢 Working Capital Efficiency:\n"
-            "→ Bajo capital circulante (CR bajo).\n"
-            "→ Puede indicar eficiencia operativa.\n"
-            "✔ Conclusión: modelo optimizado, pero requiere monitoreo."
-        )
-
-    # 🔴 RIESGOS
-    if roe < 0.10 and margin < 0.10:
-        alerts.append(
-            "🪤 Weak Business:\n"
-            "→ Baja rentabilidad sobre capital.\n"
-            "→ Márgenes débiles.\n"
-            "✔ Conclusión: negocio estructuralmente débil."
-        )
-
-    if roe < 0.08 and rev_g < 0.05:
-        alerts.append(
-            "🪤 Value Trap Risk:\n"
-            "→ Sin crecimiento.\n"
-            "→ Bajo retorno sobre capital.\n"
-            "✔ Conclusión: parece barato pero sin catalizadores."
-        )
-
-    if de > 200:
-        alerts.append(
-            "⚠️ Debt Overhang:\n"
-            "→ Alto nivel de deuda.\n"
-            "✔ Conclusión: riesgo financiero elevado."
-        )
-
-    if cr < 0.8:
-        alerts.append(
-            "💧 Liquidity Risk:\n"
-            "→ Dificultad para cubrir obligaciones de corto plazo.\n"
-            "✔ Conclusión: posible estrés financiero."
-        )
-
-    if roe < 0:
-        alerts.append(
-            "🔥 Capital Destruction:\n"
-            "→ ROE negativo.\n"
-            "✔ Conclusión: destrucción de valor para el accionista."
-        )
-
-    if margin <= 0:
-        alerts.append(
-            "💀 No Profitability:\n"
-            "→ Márgenes negativos.\n"
-            "✔ Conclusión: negocio no rentable."
-        )
-
-    if roe < 0 and margin < 0 and rev_g < 0:
-        alerts.append(
-            "💀 Zombie Company:\n"
-            "→ Sin crecimiento, sin márgenes, sin rentabilidad.\n"
-            "✔ Conclusión: empresa no viable."
-        )
-
-    # --- RENDER ---
     if alerts:
-        with st.expander("🔍 ORCA Intelligence", expanded=True):
+        with st.expander("🔍 ORCA Intelligence: Diagnóstico del Analista Senior", expanded=True):
             for a in alerts:
-                if any(icon in a for icon in ["💎","🏭","📈","🛡️"]):
-                    st.info(a)
-                elif any(icon in a for icon in ["⚖️","🧪","🐢","🏢"]):
-                    st.warning(a)
-                else:
-                    st.error(a)
+                if "🟢" in a: st.info(a)
+                elif "🟡" in a: st.warning(a)
+                else: st.error(a)
 
     st.markdown("---")
 
     # --- VALUACIÓN ---
     st.subheader("🎯 Veredicto de Inversión")
-
     iv_base = (val_dcf + val_mr) / 2 if (val_dcf > 0 and val_mr > 0) else max(val_dcf, val_mr)
     factor_orca = 0.5 + (qs_sheets / 100) * 0.5
     precio_compra = iv_base * factor_orca
-
     qs_category = classify_qs(qs_sheets)
 
     if iv_base > 0:
         res1, res2, res3 = st.columns(3)
         res1.metric("Intrínseco Promedio", f"${iv_base:.2f}")
-        res2.metric("Factor ORCA", f"{factor_orca:.3f}")
+        res2.metric("Factor ORCA (B)", f"{factor_orca:.3f}")
         res3.metric("Precio de Compra", f"${precio_compra:.2f}",
-                    delta=f"{((precio_compra/d.get('price', 1))-1)*100:.1f}% vs Mercado")
+                    delta=f"{((precio_compra/d['price'])-1)*100:.1f}% vs Mercado")
 
-        price = d.get('price', 0)
-
-        if qs_sheets < 30:
-            st.error(f"⛔ REJECTED ({qs_category})")
-        else:
-            if price <= precio_compra:
-                st.success(f"✅ BUY ({qs_category})")
-            elif price <= iv_base:
-                st.warning(f"⚖️ HOLD ({qs_category})")
-            else:
-                st.error(f"🚫 OVERVALUED ({qs_category})")
-
+        if qs_sheets < 30: st.error(f"⛔ REJECTED ({qs_category})")
+        elif d['price'] <= precio_compra: st.success(f"✅ BUY ({qs_category})")
+        elif d['price'] <= iv_base: st.warning(f"⚖️ HOLD ({qs_category})")
+        else: st.error(f"🚫 OVERVALUED ({qs_category})")
     else:
-        st.info("Introduce DCF y MR desde Sheets.")
-
+        st.info("Introduce datos de Sheets para ver el veredicto.")
 else:
     st.info("Introduce un Ticker y carga métricas.")
+
