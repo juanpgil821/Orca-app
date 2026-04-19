@@ -154,5 +154,3 @@ if d:
 
 else:
     st.info("👈 Introduce un Ticker y haz clic en 'Cargar Métricas de Mercado' para comenzar.")
-
-
