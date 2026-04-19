@@ -113,5 +113,75 @@ if d:
     if eps_g_val > 0.15 and de_val > 150:
         alerts.append("🧪 Leveraged Growth")
 
-    if margin_val < 0.10 and roe_val < 0.10
+    if margin_val < 0.10 and roe_val < 0.10 and bb_yield > 0.04:
+        alerts.append("⚠️ Yield Trap Risk")
+
+    if roe_val < 0.08 and margin_val < 0.10 and rev_g_val < 0.05:
+        alerts.append("🪤 Classic Value Trap")
+
+    if de_val > 200 and roe_val < 0.15:
+        alerts.append("⚠️ Debt Overhang Risk")
+
+    if cr_val < 0.8:
+        alerts.append("💧 Liquidity Stress")
+
+    if roe_val < 0:
+        alerts.append("🔥 Capital Destruction")
+
+    if margin_val <= 0 and roe_val <= 0 and eps_g_val <= 0:
+        alerts.append("💀 Zombie Mode")
+
+    if cr_val < 1 and de_val < 150 and margin_val > 0.05 and roe_val > 0.10:
+        alerts.append("🛡️ Defensive Giant")
+
+    if margin_val > 0.20 and bb_yield > 0.03:
+        alerts.append("💵 Cash Flow Machine")
+
+    if alerts:
+        with st.expander("🔍 ORCA Intelligence: Institutional Diagnostics", expanded=True):
+            for a in alerts:
+                if any(icon in a for icon in ["💎","🏭","💰","🚀","📈","🛡️","💵"]):
+                    st.info(a)
+                elif any(icon in a for icon in ["🔄","🧪","⚠️"]):
+                    st.warning(a)
+                else:
+                    st.error(a)
+
+    st.markdown("---")
+
+    # --- VALUACIÓN ---
+    st.subheader("🎯 Veredicto de Inversión")
+
+    iv_base = (val_dcf + val_mr) / 2 if (val_dcf > 0 and val_mr > 0) else max(val_dcf, val_mr)
+
+    factor_orca = 0.5 + (qs_sheets / 100) * 0.5
+    precio_compra = iv_base * factor_orca
+
+    qs_category = classify_qs(qs_sheets)
+
+    if iv_base > 0:
+        res1, res2, res3 = st.columns(3)
+        res1.metric("Intrínseco Promedio", f"${iv_base:.2f}")
+        res2.metric("Factor ORCA", f"{factor_orca:.3f}")
+        res3.metric("Precio de Compra", f"${precio_compra:.2f}",
+                    delta=f"{((precio_compra/d.get('price', 1))-1)*100:.1f}% vs Mercado")
+
+        price = d.get('price', 0)
+
+        # --- SEÑAL FINAL ---
+        if qs_sheets < 30:
+            st.error(f"⛔ REJECTED ({qs_category})")
+        else:
+            if price <= precio_compra:
+                st.success(f"✅ BUY ({qs_category})")
+            elif price <= iv_base:
+                st.warning(f"⚖️ HOLD ({qs_category})")
+            else:
+                st.error(f"🚫 OVERVALUED ({qs_category})")
+
+    else:
+        st.info("Introduce DCF y MR desde Sheets.")
+
+else:
+    st.info("Introduce un Ticker y carga métricas.")
 
