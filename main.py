@@ -1,5 +1,6 @@
 import streamlit as st
 import yfinance as yf
+import database as db  # <--- IMPORTACIÓN DE TU BASE DE DATOS
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -27,15 +28,36 @@ with st.sidebar:
     st.header("📥 Datos Validados (Sheets)")
     ticker_input = st.text_input("Introduce Ticker", value="ADBE").upper()
     
+    # --- LÓGICA DE INTERCEPTACIÓN DATABASE.PY ---
+    hc = db.get_ticker_data(ticker_input)
+    if hc:
+        st.success(f"🎯 Datos cargados de HTM-30: {hc['name']}")
+        # Definimos los valores por defecto basados en la base de datos
+        def_dcf = hc['dcf_val']
+        def_mr = hc['mr_val']
+        def_qs = hc['quality_score']
+        def_eps_g = hc['eps_growth']
+        def_bb_y = hc['buyback_yield']
+        def_fcf_y = hc['fcf_yield']
+    else:
+        # Valores por defecto estándar si no está en la base de datos
+        def_dcf = 0.0
+        def_mr = 0.0
+        def_qs = 75
+        def_eps_g = 0.0
+        def_bb_y = 0.0
+        def_fcf_y = 0.0
+
     st.subheader("Valuación de Sheets")
-    val_dcf = st.number_input("Valor DCF (Sheets)", min_value=0.0, step=0.1)
-    val_mr = st.number_input("Valor MR (Sheets)", min_value=0.0, step=0.1)
-    qs_sheets = st.slider("Quality Score (QS)", 0, 100, 75)
+    # Los inputs ahora usan los valores de def_...
+    val_dcf = st.number_input("Valor DCF (Sheets)", min_value=0.0, step=0.1, value=def_dcf)
+    val_mr = st.number_input("Valor MR (Sheets)", min_value=0.0, step=0.1, value=def_mr)
+    qs_sheets = st.slider("Quality Score (QS)", 0, 100, def_qs)
     
     st.subheader("Métricas Manuales (Input)")
-    m_eps_g = st.number_input("EPS Growth TTM (%)", value=0.0)
-    m_bb_y = st.number_input("Buyback Yield (%)", value=0.0)
-    m_fcf_y = st.number_input("FCF Yield (%)", value=0.0)
+    m_eps_g = st.number_input("EPS Growth TTM (%)", value=def_eps_g)
+    m_bb_y = st.number_input("Buyback Yield (%)", value=def_bb_y)
+    m_fcf_y = st.number_input("FCF Yield (%)", value=def_fcf_y)
     
     st.markdown("---")
     
@@ -58,6 +80,7 @@ with st.sidebar:
             st.error(f"Error al conectar con la API: {e}")
 
 # --- PANEL CENTRAL ---
+# (El resto del código se mantiene exactamente igual a tu original)
 d = st.session_state.get('data', {})
 
 if d:
