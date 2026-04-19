@@ -17,12 +17,12 @@ def classify_qs(qs):
     else:
         return "Avoid"
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="ORCA Terminal 2.0", layout="wide", page_icon="🚢")
 st.title("🚢 ORCA 2.0: Terminal de Ejecución e Inteligencia")
 st.markdown("---")
 
-# --- SIDEBAR ---
+# --- SIDEBAR: INPUTS DE VALORACIÓN ---
 with st.sidebar:
     st.header("📥 Datos Validados (Sheets)")
     ticker_input = st.text_input("Introduce Ticker", value="ADBE").upper()
@@ -36,7 +36,26 @@ with st.sidebar:
     
     if st.button("🚀 Cargar Métricas de Mercado"):
         try:
-            raw = yf.Ticker(ticker_input).info
+            ticker_obj = yf.Ticker(ticker_input)
+            raw = ticker_obj.info
+            
+            # 1. CÁLCULO DE BUYBACK YIELD REAL (TTM)
+            # Extraemos del Cash Flow el gasto real en recompra de acciones
+            try:
+                cf = ticker_obj.cashflow
+                # Buscamos la fila de recompra, suele ser negativa (salida de caja)
+                buyback_cash = abs(cf.loc['Repurchase Of Capital Stock'].iloc[0])
+                market_cap = raw.get('marketCap', 1)
+                bb_yield_calc = (buyback_cash / market_cap) * 100
+            except:
+                bb_yield_calc = 0.0
+
+            # 2. ESTABILIZACIÓN DE EPS GROWTH (Evitar anomalías extremas)
+            eps_g_raw = raw.get('earningsGrowth', 0.0)
+            if eps_g_raw > 2.0: eps_g_raw = 0.20  # Capamos crecimientos absurdos para el analista
+            elif eps_g_raw < -1.0: eps_g_raw = -0.50
+
+            # 3. CONSOLIDACIÓN EN SESSION STATE
             st.session_state['data'] = {
                 'price': raw.get('currentPrice', 0.0),
                 'shares': raw.get('sharesOutstanding', 0),
@@ -47,41 +66,45 @@ with st.sidebar:
                 'roe': raw.get('returnOnEquity', 0.0) * 100,
                 'rev_g': raw.get('revenueGrowth', 0.0) * 100,
                 'op_m': raw.get('operatingMargins', 0.0) * 100,
-                'bb_y': raw.get('yield', 0.0) * 100,
-                'eps_g': raw.get('earningsGrowth', 0.0) * 100
+                'div_y': raw.get('dividendYield', 0.0) * 100 if raw.get('dividendYield') else 0.0,
+                'bb_y': bb_yield_calc,
+                'eps_g': eps_g_raw * 100
             }
         except Exception as e:
             st.error(f"Error al conectar con la API: {e}")
 
-# --- PANEL CENTRAL ---
+# --- PANEL CENTRAL: VISUALIZACIÓN ---
 d = st.session_state.get('data', {})
 
 if d:
     st.subheader(f"📊 Fundamentales: {ticker_input}")
     
-    # Fila 1
+    # Fila 1: Mercado
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Precio", f"${d.get('price', 0):.2f}")
     c2.metric("Shares (B)", f"{d.get('shares', 0) / 1e9:.3f}B")
     c3.metric("P/E TTM", f"{d.get('pe_ttm', 0):.2f}x")
     c4.metric("EPS TTM", f"${d.get('eps_ttm', 0):.2f}")
 
-    # Fila 2
+    # Fila 2: Calidad Financiera
     c5, c6, c7, c8 = st.columns(4)
     c5.metric("Current Ratio", f"{d.get('cr', 0):.2f}")
     c6.metric("Debt to Equity", f"{d.get('de', 0):.2f}%")
     c7.metric("ROE", f"{d.get('roe', 0):.1f}%")
     c8.metric("Operating Margin", f"{d.get('op_m', 0):.1f}%")
 
-    # Fila 3
+    # Fila 3: Crecimiento y Retorno
     c9, c10, c11 = st.columns(3)
     c9.metric("Rev. Growth (YoY)", f"{d.get('rev_g', 0):.1f}%")
-    c10.metric("EPS Growth", f"{d.get('eps_g', 0):.1f}%")
-    c11.metric("Yield", f"{d.get('bb_y', 0):.2f}%")
+    c10.metric("EPS Growth (Adj)", f"{d.get('eps_g', 0):.1f}%")
+    # Sumamos dividendo + recompras para el Yield Total
+    total_yield = d.get('div_y', 0) + d.get('bb_y', 0)
+    c11.metric("Total Shareholder Yield", f"{total_yield:.2f}%", 
+              help=f"Div: {d.get('div_y',0):.2f}% | Buyback: {d.get('bb_y',0):.2f}%")
 
     st.markdown("---")
 
-    # --- ORCA INTELLIGENCE 2.0 ---
+    # --- ORCA INTELLIGENCE 2.0: ANALISTA SENIOR ---
     roe_val = d.get('roe', 0) / 100
     margin_val = d.get('op_m', 0) / 100
     bb_yield = d.get('bb_y', 0) / 100
@@ -92,50 +115,51 @@ if d:
 
     alerts = []
 
+    # Diagnósticos Positivos (Institucionales)
     if roe_val > 0.25 and margin_val > 0.25 and de_val < 100:
-        alerts.append("💎 **Elite Compounder:** Alta rentabilidad (ROE) y márgenes elevados con baja deuda. Negocio capaz de reinvertir capital a altas tasas por largos periodos.")
+        alerts.append("💎 **Elite Compounder:** Rentabilidad y márgenes elevados con baja deuda. Capacidad de reinversión masiva.")
 
     if roe_val > 0.30 and margin_val > 0.20:
-        alerts.append("🏭 **Capital Efficiency Engine:** Excelente uso del capital. Cada dólar invertido genera retornos superiores al promedio.")
+        alerts.append("🏭 **Capital Efficiency Engine:** Uso del capital superior al promedio del mercado.")
 
     if bb_yield > 0.04 and roe_val > 0.15:
-        alerts.append(f"💰 **Capital Return Machine:** Retorno significativo al accionista ({bb_yield:.1%}) respaldado por rentabilidad real del negocio.")
+        alerts.append(f"💰 **Capital Return Machine:** Recompra significativa ({bb_yield:.1%}) respaldada por rentabilidad real.")
 
     if eps_g_val > 0.15 and roe_val > 0.20:
-        alerts.append("🚀 **High Quality Growth:** Crecimiento fuerte acompañado de alta rentabilidad. Perfil ideal de compounder.")
+        alerts.append("🚀 **High Quality Growth:** Crecimiento fuerte acompañado de alta eficiencia.")
 
     if margin_val > 0.30 and rev_g_val > 0.10:
-        alerts.append("📈 **Scalable Model:** El negocio crece sin sacrificar márgenes, indicando alta escalabilidad.")
+        alerts.append("📈 **Scalable Model:** Crecimiento sin sacrificio de márgenes.")
 
+    if margin_val > 0.20 and total_yield > 0.03:
+        alerts.append("💵 **Cash Flow Machine:** Generación sólida de caja y retorno al accionista.")
+
+    # Diagnósticos de Riesgo y Alertas
     if eps_g_val > 0.20 and roe_val < 0.10:
-        alerts.append("🔄 **Turnaround Play:** Alto crecimiento esperado pero baja rentabilidad actual. Posible recuperación, mayor riesgo.")
+        alerts.append("🔄 **Turnaround Play:** Alto crecimiento esperado pero rentabilidad actual débil. Riesgo de ejecución.")
 
     if eps_g_val > 0.15 and de_val > 150:
-        alerts.append("🧪 **Leveraged Growth:** Crecimiento impulsado con deuda. Riesgo elevado si el crecimiento se desacelera.")
+        alerts.append("🧪 **Leveraged Growth:** Crecimiento impulsado por deuda. Frágil ante desaceleraciones.")
 
-    if margin_val < 0.10 and roe_val < 0.10 and bb_yield > 0.04:
-        alerts.append("⚠️ **Yield Trap Risk:** Alto dividendo pero negocio débil. Posible trampa de valor.")
-
-    if roe_val < 0.08 and margin_val < 0.10 and rev_g_val < 0.05:
-        alerts.append("🪤 **Classic Value Trap:** Bajo crecimiento, baja rentabilidad y sin ventajas competitivas claras.")
+    if margin_val < 0.10 and roe_val < 0.10 and total_yield > 0.04:
+        alerts.append("⚠️ **Yield Trap Risk:** Dividendo alto pero negocio subyacente débil. Sostenibilidad en duda.")
 
     if de_val > 200 and roe_val < 0.15:
-        alerts.append("⚠️ **Debt Overhang Risk:** Alta deuda sin retornos suficientes. Riesgo estructural.")
+        alerts.append("⚠️ **Debt Overhang Risk:** Carga de deuda excesiva para los retornos que genera.")
 
-    if cr_val < 0.8:
-        alerts.append("💧 **Liquidity Stress:** Riesgo de liquidez a corto plazo. Posibles problemas operativos o financieros.")
+    # Corrección de Liquidez para Gigantes (WMT, MO, etc)
+    if cr_val < 0.9:
+        mkt_cap = d.get('price', 0) * d.get('shares', 0)
+        if mkt_cap > 20_000_000_000:
+            alerts.append(f"🛡️ **Defensive Giant (Working Capital King):** CR bajo ({cr_val}) normal en líderes con alto poder de negociación.")
+        else:
+            alerts.append(f"💧 **Liquidity Stress:** Riesgo de liquidez a corto plazo en empresa sin escala suficiente.")
 
     if roe_val < 0:
-        alerts.append("🔥 **Capital Destruction:** El negocio destruye valor de forma consistente.")
+        alerts.append("🔥 **Capital Destruction:** ROE negativo. El negocio consume más de lo que genera.")
 
-    if margin_val <= 0 and roe_val <= 0 and eps_g_val <= 0:
-        alerts.append("💀 **Zombie Mode:** Sin crecimiento, sin márgenes y sin retorno. Empresa no viable a largo plazo.")
-
-    if cr_val < 1 and de_val < 150 and margin_val > 0.05 and roe_val > 0.10:
-        alerts.append("🛡️ **Defensive Giant:** Negocio estable, eficiente y resiliente. Típico en grandes corporaciones defensivas.")
-
-    if margin_val > 0.20 and bb_yield > 0.03:
-        alerts.append("💵 **Cash Flow Machine:** Generación sólida de caja combinada con retorno al accionista.")
+    if margin_val <= 0 and roe_val <= 0:
+        alerts.append("💀 **Zombie Mode:** Sin márgenes ni retorno. Empresa en estado crítico.")
 
     if alerts:
         with st.expander("🔍 ORCA Intelligence: Institutional Diagnostics", expanded=True):
@@ -149,38 +173,38 @@ if d:
 
     st.markdown("---")
 
-    # --- VALUACIÓN ---
+    # --- VALUACIÓN Y VEREDICTO FINAL ---
     st.subheader("🎯 Veredicto de Inversión")
 
     iv_base = (val_dcf + val_mr) / 2 if (val_dcf > 0 and val_mr > 0) else max(val_dcf, val_mr)
-
+    
+    # NUEVA FÓRMULA B: 0.5 + (QS/100 * 0.5)
     factor_orca = 0.5 + (qs_sheets / 100) * 0.5
     precio_compra = iv_base * factor_orca
-
     qs_category = classify_qs(qs_sheets)
 
     if iv_base > 0:
         res1, res2, res3 = st.columns(3)
         res1.metric("Intrínseco Promedio", f"${iv_base:.2f}")
-        res2.metric("Factor ORCA", f"{factor_orca:.3f}")
+        res2.metric("Factor ORCA (B)", f"{factor_orca:.3f}")
         res3.metric("Precio de Compra", f"${precio_compra:.2f}",
                     delta=f"{((precio_compra/d.get('price', 1))-1)*100:.1f}% vs Mercado")
 
         price = d.get('price', 0)
 
         if qs_sheets < 30:
-            st.error(f"⛔ REJECTED ({qs_category})")
+            st.error(f"⛔ REJECTED: Calidad insuficiente ({qs_category})")
         else:
             if price <= precio_compra:
-                st.success(f"✅ BUY ({qs_category})")
+                st.success(f"✅ BUY: Zona de seguridad alcanzada ({qs_category})")
             elif price <= iv_base:
-                st.warning(f"⚖️ HOLD ({qs_category})")
+                st.warning(f"⚖️ HOLD: Por debajo del valor real, pero falta margen de seguridad ({qs_category})")
             else:
-                st.error(f"🚫 OVERVALUED ({qs_category})")
-
+                st.error(f"🚫 OVERVALUED: El precio ignora el margen de seguridad ({qs_category})")
     else:
-        st.info("Introduce DCF y MR desde Sheets.")
+        st.info("Introduce los datos de DCF y MR desde Sheets para ver el veredicto.")
 
 else:
-    st.info("Introduce un Ticker y carga métricas.")
+    st.info("Introduce un Ticker en el sidebar y pulsa 'Cargar Métricas' para iniciar.")
+
 
