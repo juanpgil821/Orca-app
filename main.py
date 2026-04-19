@@ -93,49 +93,49 @@ if d:
     alerts = []
 
     if roe_val > 0.25 and margin_val > 0.25 and de_val < 100:
-        alerts.append("💎 Elite Compounder")
+        alerts.append("💎 **Elite Compounder:** Alta rentabilidad (ROE) y márgenes elevados con baja deuda. Negocio capaz de reinvertir capital a altas tasas por largos periodos.")
 
     if roe_val > 0.30 and margin_val > 0.20:
-        alerts.append("🏭 Capital Efficiency Engine")
+        alerts.append("🏭 **Capital Efficiency Engine:** Excelente uso del capital. Cada dólar invertido genera retornos superiores al promedio.")
 
     if bb_yield > 0.04 and roe_val > 0.15:
-        alerts.append("💰 Capital Return Machine")
+        alerts.append(f"💰 **Capital Return Machine:** Retorno significativo al accionista ({bb_yield:.1%}) respaldado por rentabilidad real del negocio.")
 
     if eps_g_val > 0.15 and roe_val > 0.20:
-        alerts.append("🚀 High Quality Growth")
+        alerts.append("🚀 **High Quality Growth:** Crecimiento fuerte acompañado de alta rentabilidad. Perfil ideal de compounder.")
 
     if margin_val > 0.30 and rev_g_val > 0.10:
-        alerts.append("📈 Scalable Model")
+        alerts.append("📈 **Scalable Model:** El negocio crece sin sacrificar márgenes, indicando alta escalabilidad.")
 
     if eps_g_val > 0.20 and roe_val < 0.10:
-        alerts.append("🔄 Turnaround Play")
+        alerts.append("🔄 **Turnaround Play:** Alto crecimiento esperado pero baja rentabilidad actual. Posible recuperación, mayor riesgo.")
 
     if eps_g_val > 0.15 and de_val > 150:
-        alerts.append("🧪 Leveraged Growth")
+        alerts.append("🧪 **Leveraged Growth:** Crecimiento impulsado con deuda. Riesgo elevado si el crecimiento se desacelera.")
 
     if margin_val < 0.10 and roe_val < 0.10 and bb_yield > 0.04:
-        alerts.append("⚠️ Yield Trap Risk")
+        alerts.append("⚠️ **Yield Trap Risk:** Alto dividendo pero negocio débil. Posible trampa de valor.")
 
     if roe_val < 0.08 and margin_val < 0.10 and rev_g_val < 0.05:
-        alerts.append("🪤 Classic Value Trap")
+        alerts.append("🪤 **Classic Value Trap:** Bajo crecimiento, baja rentabilidad y sin ventajas competitivas claras.")
 
     if de_val > 200 and roe_val < 0.15:
-        alerts.append("⚠️ Debt Overhang Risk")
+        alerts.append("⚠️ **Debt Overhang Risk:** Alta deuda sin retornos suficientes. Riesgo estructural.")
 
     if cr_val < 0.8:
-        alerts.append("💧 Liquidity Stress")
+        alerts.append("💧 **Liquidity Stress:** Riesgo de liquidez a corto plazo. Posibles problemas operativos o financieros.")
 
     if roe_val < 0:
-        alerts.append("🔥 Capital Destruction")
+        alerts.append("🔥 **Capital Destruction:** El negocio destruye valor de forma consistente.")
 
     if margin_val <= 0 and roe_val <= 0 and eps_g_val <= 0:
-        alerts.append("💀 Zombie Mode")
+        alerts.append("💀 **Zombie Mode:** Sin crecimiento, sin márgenes y sin retorno. Empresa no viable a largo plazo.")
 
     if cr_val < 1 and de_val < 150 and margin_val > 0.05 and roe_val > 0.10:
-        alerts.append("🛡️ Defensive Giant")
+        alerts.append("🛡️ **Defensive Giant:** Negocio estable, eficiente y resiliente. Típico en grandes corporaciones defensivas.")
 
     if margin_val > 0.20 and bb_yield > 0.03:
-        alerts.append("💵 Cash Flow Machine")
+        alerts.append("💵 **Cash Flow Machine:** Generación sólida de caja combinada con retorno al accionista.")
 
     if alerts:
         with st.expander("🔍 ORCA Intelligence: Institutional Diagnostics", expanded=True):
@@ -168,7 +168,6 @@ if d:
 
         price = d.get('price', 0)
 
-        # --- SEÑAL FINAL ---
         if qs_sheets < 30:
             st.error(f"⛔ REJECTED ({qs_category})")
         else:
