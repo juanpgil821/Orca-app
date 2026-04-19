@@ -29,6 +29,33 @@ HTM_30_DATA = {
         "dcf_val": 343.00,
         "mr_val": 311.00
     },
+    "ASML": {
+        "name": "ASML Holding",
+        "fcf_yield": 1.86,
+        "eps_growth": 21.4,
+        "buyback_yield": 0.0,  # Ratio 0.8 (Dilución neta)
+        "quality_score": 80,
+        "dcf_val": 1557.00,
+        "mr_val": 1170.00
+    },
+    "NVO": {
+        "name": "Novo Nordisk",
+        "fcf_yield": 2.51,
+        "eps_growth": 14.7,
+        "buyback_yield": 0.0,  # Ratio 0.40 (Dilución neta)
+        "quality_score": 71,
+        "dcf_val": 42.00,
+        "mr_val": 46.00
+    },
+    "DECK": {
+        "name": "Deckers Outdoor",
+        "fcf_yield": 5.82,
+        "eps_growth": 14.8,
+        "buyback_yield": 0.0,  # Ratio 2.5 (Dilución neta alta)
+        "quality_score": 89,
+        "dcf_val": 118.00,
+        "mr_val": 108.00
+    },
 }
 
 def get_ticker_data(ticker):
