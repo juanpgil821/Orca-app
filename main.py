@@ -17,12 +17,12 @@ def classify_qs(qs):
     else:
         return "Avoid"
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
+# --- CONFIGURACIÓN ---
 st.set_page_config(page_title="ORCA Terminal 2.0", layout="wide", page_icon="🚢")
 st.title("🚢 ORCA 2.0: Terminal de Ejecución e Inteligencia")
 st.markdown("---")
 
-# --- SIDEBAR (INPUTS) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.header("📥 Datos Validados (Sheets)")
     ticker_input = st.text_input("Introduce Ticker", value="ADBE").upper()
@@ -92,30 +92,35 @@ if d:
     alerts = []
 
     if margin_val > 0.30 and roe_val > 0.30:
-        alerts.append("💎 Wide Moat Gem")
+        alerts.append("💎 **Wide Moat Gem:** Márgenes y ROE de élite indican un negocio con ventajas competitivas sostenibles.")
 
     if bb_yield > 0.05:
-        alerts.append("🐂 Shareholder Yield Alpha")
+        alerts.append(f"🐂 **Shareholder Yield Alpha:** Retorno agresivo al accionista vía dividendos o recompras ({bb_yield:.1%}).")
 
     if margin_val <= 0 and roe_val <= 0:
-        alerts.append("💀 Zombie Company")
+        alerts.append("💀 **Zombie Company Alert:** El negocio no genera beneficios ni valor económico real.")
 
     if roe_val < 0:
-        alerts.append("🚨 Capital Destroyer")
+        alerts.append(f"🚨 **Capital Destroyer:** ROE negativo ({roe_val:.1%}) indica destrucción sistemática de valor.")
 
     if roe_val > 0.50 and de_val > 250:
-        alerts.append("🧪 Leveraged ROE")
+        alerts.append(f"🧪 **Leveraged ROE:** Rentabilidad artificialmente inflada por deuda extrema ({de_val:.0f}% D/E).")
 
     if cr_val < 0.9:
-        alerts.append("📉 Liquidity Risk")
+        alerts.append(f"📉 **Liquidity Risk:** Riesgo potencial de problemas de liquidez (Current Ratio: {cr_val:.2f}).")
 
     if eps_g_val > 0.20:
-        alerts.append("🚀 Hypergrowth")
+        alerts.append(f"🚀 **Hypergrowth Engine:** Crecimiento esperado de EPS superior al 20%.")
 
     if alerts:
-        with st.expander("🔍 ORCA Intelligence", expanded=True):
+        with st.expander("🔍 ORCA Intelligence: Risk & Quality Diagnosis", expanded=True):
             for a in alerts:
-                st.write(a)
+                if any(icon in a for icon in ["💎", "🐂", "🚀"]):
+                    st.info(a)
+                elif any(icon in a for icon in ["🧪", "📉"]):
+                    st.warning(a)
+                else:
+                    st.error(a)
 
     st.markdown("---")
 
@@ -136,11 +141,11 @@ if d:
         res3.metric("Precio de Compra", f"${precio_compra:.2f}",
                     delta=f"{((precio_compra/d.get('price', 1))-1)*100:.1f}% vs Mercado")
 
-        # --- SEÑAL FINAL ---
         price = d.get('price', 0)
 
+        # --- SEÑAL FINAL ---
         if qs_sheets < 30:
-            st.error(f"⛔ REJECTED ({qs_category}): Calidad insuficiente.")
+            st.error(f"⛔ REJECTED ({qs_category}): Calidad insuficiente para inversión.")
         else:
             if price <= precio_compra:
                 st.success(f"✅ BUY ({qs_category})")
