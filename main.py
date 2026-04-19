@@ -81,82 +81,37 @@ if d:
 
     st.markdown("---")
 
-    # --- ORCA INTELLIGENCE ---
+    # --- ORCA INTELLIGENCE 2.0 ---
     roe_val = d.get('roe', 0) / 100
     margin_val = d.get('op_m', 0) / 100
     bb_yield = d.get('bb_y', 0) / 100
     cr_val = d.get('cr', 0)
     de_val = d.get('de', 0)
     eps_g_val = d.get('eps_g', 0) / 100
+    rev_g_val = d.get('rev_g', 0) / 100
 
     alerts = []
 
-    if margin_val > 0.30 and roe_val > 0.30:
-        alerts.append("💎 **Wide Moat Gem:** Márgenes y ROE de élite indican un negocio con ventajas competitivas sostenibles.")
+    if roe_val > 0.25 and margin_val > 0.25 and de_val < 100:
+        alerts.append("💎 Elite Compounder")
 
-    if bb_yield > 0.05:
-        alerts.append(f"🐂 **Shareholder Yield Alpha:** Retorno agresivo al accionista vía dividendos o recompras ({bb_yield:.1%}).")
+    if roe_val > 0.30 and margin_val > 0.20:
+        alerts.append("🏭 Capital Efficiency Engine")
 
-    if margin_val <= 0 and roe_val <= 0:
-        alerts.append("💀 **Zombie Company Alert:** El negocio no genera beneficios ni valor económico real.")
+    if bb_yield > 0.04 and roe_val > 0.15:
+        alerts.append("💰 Capital Return Machine")
 
-    if roe_val < 0:
-        alerts.append(f"🚨 **Capital Destroyer:** ROE negativo ({roe_val:.1%}) indica destrucción sistemática de valor.")
+    if eps_g_val > 0.15 and roe_val > 0.20:
+        alerts.append("🚀 High Quality Growth")
 
-    if roe_val > 0.50 and de_val > 250:
-        alerts.append(f"🧪 **Leveraged ROE:** Rentabilidad artificialmente inflada por deuda extrema ({de_val:.0f}% D/E).")
+    if margin_val > 0.30 and rev_g_val > 0.10:
+        alerts.append("📈 Scalable Model")
 
-    if cr_val < 0.9:
-        alerts.append(f"📉 **Liquidity Risk:** Riesgo potencial de problemas de liquidez (Current Ratio: {cr_val:.2f}).")
+    if eps_g_val > 0.20 and roe_val < 0.10:
+        alerts.append("🔄 Turnaround Play")
 
-    if eps_g_val > 0.20:
-        alerts.append(f"🚀 **Hypergrowth Engine:** Crecimiento esperado de EPS superior al 20%.")
+    if eps_g_val > 0.15 and de_val > 150:
+        alerts.append("🧪 Leveraged Growth")
 
-    if alerts:
-        with st.expander("🔍 ORCA Intelligence: Risk & Quality Diagnosis", expanded=True):
-            for a in alerts:
-                if any(icon in a for icon in ["💎", "🐂", "🚀"]):
-                    st.info(a)
-                elif any(icon in a for icon in ["🧪", "📉"]):
-                    st.warning(a)
-                else:
-                    st.error(a)
-
-    st.markdown("---")
-
-    # --- VALUACIÓN ---
-    st.subheader("🎯 Veredicto de Inversión")
-
-    iv_base = (val_dcf + val_mr) / 2 if (val_dcf > 0 and val_mr > 0) else max(val_dcf, val_mr)
-
-    factor_orca = 0.5 + (qs_sheets / 100) * 0.5
-    precio_compra = iv_base * factor_orca
-
-    qs_category = classify_qs(qs_sheets)
-
-    if iv_base > 0:
-        res1, res2, res3 = st.columns(3)
-        res1.metric("Intrínseco Promedio", f"${iv_base:.2f}")
-        res2.metric("Factor ORCA", f"{factor_orca:.3f}")
-        res3.metric("Precio de Compra", f"${precio_compra:.2f}",
-                    delta=f"{((precio_compra/d.get('price', 1))-1)*100:.1f}% vs Mercado")
-
-        price = d.get('price', 0)
-
-        # --- SEÑAL FINAL ---
-        if qs_sheets < 30:
-            st.error(f"⛔ REJECTED ({qs_category}): Calidad insuficiente para inversión.")
-        else:
-            if price <= precio_compra:
-                st.success(f"✅ BUY ({qs_category})")
-            elif price <= iv_base:
-                st.warning(f"⚖️ HOLD ({qs_category})")
-            else:
-                st.error(f"🚫 OVERVALUED ({qs_category})")
-
-    else:
-        st.info("Introduce DCF y MR desde Sheets.")
-
-else:
-    st.info("Introduce un Ticker y carga métricas.")
+    if margin_val < 0.10 and roe_val < 0.10
 
