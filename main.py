@@ -39,6 +39,7 @@ with st.sidebar:
         def_eps_g = hc['eps_growth']
         def_bb_y = hc['buyback_yield']
         def_fcf_y = hc['fcf_yield']
+        def_fcf_ttm = hc.get('fcf_ttm', 0.0) # NUEVO: FCF TTM desde DB
     else:
         # Valores por defecto estándar si no está en la base de datos
         def_dcf = 0.0
@@ -47,9 +48,9 @@ with st.sidebar:
         def_eps_g = 0.0
         def_bb_y = 0.0
         def_fcf_y = 0.0
+        def_fcf_ttm = 0.0
 
     st.subheader("Valuación de Sheets")
-    # Los inputs ahora usan los valores de def_...
     val_dcf = st.number_input("Valor DCF (Sheets)", min_value=0.0, step=0.1, value=def_dcf)
     val_mr = st.number_input("Valor MR (Sheets)", min_value=0.0, step=0.1, value=def_mr)
     qs_sheets = st.slider("Quality Score (QS)", 0, 100, def_qs)
@@ -58,6 +59,7 @@ with st.sidebar:
     m_eps_g = st.number_input("EPS Growth TTM (%)", value=def_eps_g)
     m_bb_y = st.number_input("Buyback Yield (%)", value=def_bb_y)
     m_fcf_y = st.number_input("FCF Yield (%)", value=def_fcf_y)
+    m_fcf_ttm = st.number_input("FCF TTM ($M)", value=def_fcf_ttm) # NUEVO: Input FCF absoluto
     
     st.markdown("---")
     
@@ -69,6 +71,7 @@ with st.sidebar:
                 'shares': raw.get('sharesOutstanding', 0),
                 'pe_ttm': raw.get('trailingPE', 0.0),
                 'eps_ttm': raw.get('trailingEps', 0.0),
+                'net_income': raw.get('netIncomeToCommon', 0), # NUEVO: Para comparar con FCF
                 'cr': raw.get('currentRatio', 0.0),
                 'de': raw.get('debtToEquity', 0.0),
                 'roe': (raw.get('returnOnEquity', 0.0) or 0.0) * 100,
@@ -80,7 +83,6 @@ with st.sidebar:
             st.error(f"Error al conectar con la API: {e}")
 
 # --- PANEL CENTRAL ---
-# (El resto del código se mantiene exactamente igual a tu original)
 d = st.session_state.get('data', {})
 
 if d:
@@ -109,15 +111,15 @@ if d:
 
     st.markdown("---")
 
-    # --- ORCA INTELLIGENCE (20 CATEGORÍAS) ---
+    # --- ORCA INTELLIGENCE (LÓGICA SENIOR) ---
     roe = d.get('roe', 0) / 100
     margin = d.get('op_m', 0) / 100
     rev_g = d.get('rev_g', 0) / 100
     de = d.get('de', 0)
     cr = d.get('cr', 0)
     div_y = d.get('div_y', 0)
+    net_income = d.get('net_income', 0)
     
-    # Inputs manuales convertidos a decimal
     eps_g = m_eps_g / 100
     bb_y = m_bb_y / 100
     fcf_y = m_fcf_y / 100
@@ -131,6 +133,12 @@ if d:
 
     if roe > 0.30 and margin > 0.20:
         alerts.append("🟢 **Capital Efficiency Engine:** Management altamente eficiente en el uso del capital de los accionistas.")
+
+    # NUEVA ALERTA: FCF TTM vs Beneficio Neto
+    if m_fcf_ttm > 0 and net_income > 0:
+        conversion = (m_fcf_ttm * 1e6) / net_income # Ajuste si fcf_ttm viene en millones
+        if conversion > 1.2:
+            alerts.append("🟢 **High Accrual Quality:** La empresa genera mucha más caja real que beneficios contables.")
 
     if eps_g > 0.15 and roe > 0.20:
         alerts.append("🟢 **High Quality Growth:** Crecimiento fuerte de beneficios respaldado por una rentabilidad real.")
@@ -163,11 +171,11 @@ if d:
     if cr < 0.9 and (d.get('price', 0) * d.get('shares', 0)) > 20e9:
         alerts.append("🟡 **Working Capital King:** Liquidez baja típica de gigantes operativos eficientes (modelo Amazon/Walmart).")
 
-    if eps_g > 0.20 and roe < 0.10:
-        alerts.append("🟡 **Turnaround Play:** Fuerte crecimiento de beneficios pero la rentabilidad sobre el capital aún es débil.")
-
-    if eps_g > 0.15 and fcf_y < 0.02:
-        alerts.append("🟡 **Earnings Quality Warning:** Los beneficios crecen en papel, pero el dinero real (FCF) no está entrando.")
+    # NUEVA ALERTA: FCF TTM insuficiente vs Beneficio Neto
+    if m_fcf_ttm > 0 and net_income > 0:
+        conversion = (m_fcf_ttm * 1e6) / net_income
+        if conversion < 0.8:
+            alerts.append("🟡 **Earnings Quality Warning:** El beneficio neto no está bien respaldado por caja real (FCF).")
 
     # 🔴 SEÑALES DE RIESGO
     if rev_g < 0.05 and roe < 0.10:
@@ -176,17 +184,11 @@ if d:
     if de > 200 and roe < 0.15:
         alerts.append("🔴 **Debt Overhang:** La carga de deuda es excesiva para el retorno que genera la operación.")
 
-    if cr < 0.8 and (d.get('price', 0) * d.get('shares', 0)) < 20e9:
-        alerts.append("🔴 **Liquidity Stress:** Riesgo de insolvencia a corto plazo. No cubre sus obligaciones corrientes.")
-
     if roe < 0:
         alerts.append("🔴 **Capital Destroyer:** La empresa está quemando el capital de los accionistas. ROE negativo.")
 
     if total_yield > 0.05 and fcf_y < 0.03:
         alerts.append("🔴 **Yield Trap Risk:** El dividendo o las recompras son insostenibles; se pagan con deuda o caja finita.")
-
-    if rev_g < 0 and margin < 0 and roe < 0:
-        alerts.append("🔴 **Zombie Mode:** Empresa en muerte cerebral: sin crecimiento, sin márgenes y sin rentabilidad.")
 
     # RENDER DE ALERTAS
     if alerts:
