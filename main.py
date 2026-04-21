@@ -7,9 +7,9 @@ import database as db  # <--- IMPORTACIÓN DE TU BASE DE DATOS
 def classify_qs(qs):
     if qs is None:
         return "Unknown"
-    elif qs >= 90:
+    elif qs >= 75:
         return "Gem 💎"
-    elif qs >= 70:
+    elif qs >= 60:
         return "Core"
     elif qs >= 40:
         return "Standard"
@@ -201,7 +201,7 @@ if d:
     st.subheader("🎯 Veredicto de Inversión")
 
     iv_base = (val_dcf + val_mr) / 2 if (val_dcf > 0 and val_mr > 0) else max(val_dcf, val_mr)
-    factor_orca = 0.5 + (qs_sheets / 100) * 0.5
+    factor_orca = (100-MAX(5, (75 - qs_sheets) * 0.4 + 5))/100
     precio_compra = iv_base * factor_orca
 
     qs_category = classify_qs(qs_sheets)
