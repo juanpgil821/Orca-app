@@ -182,6 +182,47 @@ HTM_30_DATA = {
         "mr_val": 1672.20,
         "fcf_ttm": 4377.0
     },
+       # --- BLOQUE INDUSTRIALES & DATOS DE MOAT ANCHO (Data Refinada) ---
+    "ODFL": {
+        "name": "Old Dominion Freight Line",
+        "fcf_yield": 2.05,
+        "eps_growth": 18.4,
+        "buyback_yield": 0,
+        "quality_score": 50,
+        "dcf_val": 168.25,
+        "mr_val": 130.00,
+        "fcf_ttm": 955.0
+    },
+    "CP": {
+        "name": "Canadian Pacific Kansas City",
+        "fcf_yield": 2.13,
+        "eps_growth": 8.6,
+        "buyback_yield": 0.0,
+        "quality_score": 51,
+        "dcf_val": 41.65,
+        "mr_val": 53.62,
+        "fcf_ttm": 1563.0
+    },
+    "RSG": {
+        "name": "Republic Services Inc.",
+        "fcf_yield": 3.74,
+        "eps_growth": 12.5,
+        "buyback_yield": 0.0,
+        "quality_score": 41,
+        "dcf_val": 19.00,
+        "mr_val": 163.50,
+        "fcf_ttm": 2409.0
+    },
+    "FICO": {
+        "name": "Fair Isaac Corporation",
+        "fcf_yield": 2.85,
+        "eps_growth": 20.2,
+        "buyback_yield": 0,
+        "quality_score": 57,
+        "dcf_val": 1041.50,
+        "mr_val": 1062.50,
+        "fcf_ttm": 718.5
+    },
 }
 
 def get_ticker_data(ticker):
