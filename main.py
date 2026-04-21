@@ -201,7 +201,7 @@ if d:
     st.subheader("🎯 Veredicto de Inversión")
 
     iv_base = (val_dcf + val_mr) / 2 if (val_dcf > 0 and val_mr > 0) else max(val_dcf, val_mr)
-    factor_orca = (100-MAX(5, (75 - qs_sheets) * 0.4 + 5))/100
+    factor_orca = (100-max(5, (75 - qs_sheets) * 0.4 + 5))/100
     precio_compra = iv_base * factor_orca
 
     qs_category = classify_qs(qs_sheets)
