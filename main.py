@@ -1,7 +1,7 @@
 import streamlit as st
 import yfinance as yf
 import database as db  # <--- IMPORTACIÓN DE TU BASE DE DATOS
-import pandas as pd    # <--- NUEVA PARA BITÁCORA
+import pandas as pd
 from datetime import datetime
 import os
 
@@ -21,7 +21,7 @@ def classify_qs(qs):
     else:
         return "Avoid"
 
-# --- FUNCIÓN DE BITÁCORA (NUEVA) ---
+# --- FUNCIÓN DE BITÁCORA ---
 def registrar_bitacora(ticker, precio, iv, precio_compra, qs):
     file_name = "bitacora_orca.csv"
     nuevo_registro = {
@@ -103,11 +103,10 @@ with st.sidebar:
         try:
             # Uso de la función cacheada
             st.session_state['data'] = fetch_market_data(ticker_input)
-            st.toast(f"Registro de {ticker_input} guardado en bitácora")
         except Exception as e:
             st.error(f"Error al conectar con la API: {e}")
 
-    # Mostrar Bitácora en Sidebar
+    # Visualización opcional del historial
     if st.checkbox("Ver historial (Bitácora)"):
         if os.path.exists("bitacora_orca.csv"):
             st.dataframe(pd.read_csv("bitacora_orca.csv").tail(10))
@@ -142,12 +141,13 @@ if d:
     st.markdown("---")
 
     # --- ORCA INTELLIGENCE (LÓGICA AJUSTADA) ---
+    # Usamos porcentajes reales (ej. 25.0 en lugar de 0.25) para las comparaciones
     roe = d.get('roe', 0)
     margin = d.get('op_m', 0)
     rev_g = d.get('rev_g', 0)
     de = d.get('de', 0)
     cr = d.get('cr', 0)
-    div_y = d.get('div_y', 0) 
+    div_y = d.get('div_y', 0) # API ya viene x100
     
     eps_g = m_eps_g
     bb_y = m_bb_y
@@ -159,49 +159,68 @@ if d:
     # 🟢 SEÑALES DE FORTALEZA
     if roe > 25 and margin > 25 and de < 100:
         alerts.append("🟢 **Elite Compounder:** Rentabilidad y márgenes elevados con baja deuda. Negocio capaz de reinvertir a altas tasas.")
+
     if roe > 30 and margin > 20:
         alerts.append("🟢 **Capital Efficiency Engine:** Management altamente eficiente en el uso del capital de los accionistas.")
+
     if eps_g > 15 and roe > 20:
         alerts.append("🟢 **High Quality Growth:** Crecimiento fuerte de beneficios respaldado por una rentabilidad real.")
+
     if margin > 30 and rev_g > 10:
         alerts.append("🟢 **Scalable Model:** El negocio crece con fuerza manteniendo márgenes de élite. Fuerte pricing power.")
+
     if fcf_y > 7 and margin > 20:
         alerts.append("🟢 **Cash Flow Machine:** Generación masiva de caja operativa. Capacidad total de autofinanciación.")
+
     if total_yield > 6:
         alerts.append("🟢 **Shareholder Yield Alpha:** Alta retribución al accionista mediante dividendos y recompras.")
+
     if de < 50 and cr > 1.5:
         alerts.append("🟢 **Financially Strong:** Balance blindado. Baja deuda y alta liquidez inmediata.")
+
     if fcf_y > (100/d.get('pe_ttm', 1) if d.get('pe_ttm', 0) > 0 else 0):
         alerts.append("🟢 **Cash King:** La generación de caja real supera al beneficio contable reportado.")
 
     # 🟡 SEÑALES DE ADVERTENCIA
     if roe > 25 and de > 150:
         alerts.append("🟡 **Leveraged Quality:** Rentabilidad alta pero impulsada por un endeudamiento agresivo.")
+
     if rev_g > 15 and margin < 10:
         alerts.append("🟡 **Growth Without Profit:** Crecimiento rápido en ventas pero con incapacidad de retener beneficios.")
+
     if margin > 20 and rev_g < 5:
         alerts.append("🟡 **Mature Cash Cow:** Negocio muy rentable pero estancado en su capacidad de expansión.")
+
     if cr < 0.9 and (d.get('price', 0) * d.get('shares', 0)) > 20e9:
         alerts.append("🟡 **Working Capital King:** Liquidez baja típica de gigantes operativos eficientes (modelo Amazon/Walmart).")
+
     if eps_g > 20 and roe < 10:
         alerts.append("🟡 **Turnaround Play:** Fuerte crecimiento de beneficios pero la rentabilidad sobre el capital aún es débil.")
+
     if eps_g > 15 and fcf_y < 2:
         alerts.append("🟡 **Earnings Quality Warning:** Los beneficios crecen en papel, pero el dinero real (FCF) no está entrando.")
 
     # 🔴 SEÑALES DE RIESGO
     if rev_g < 5 and roe < 10:
         alerts.append("🔴 **Classic Value Trap:** Parece barato por múltiplos pero el negocio no tiene momentum ni rentabilidad.")
+
     if de > 200 and roe < 15:
         alerts.append("🔴 **Debt Overhang:** La carga de deuda es excesiva para el retorno que genera la operación.")
+
     if cr < 0.8 and (d.get('price', 0) * d.get('shares', 0)) < 20e9:
         alerts.append("🔴 **Liquidity Stress:** Riesgo de insolvencia a corto plazo. No cubre sus obligaciones corrientes.")
+
     if roe < 0:
         alerts.append("🔴 **Capital Destroyer:** La empresa está quemando el capital de los accionistas. ROE negativo.")
+
+    # AJUSTE ESCALA: total_yield > 5.0 (5%) y fcf_y < 3.0 (3%)
     if total_yield > 5 and fcf_y < 3:
         alerts.append("🔴 **Yield Trap Risk:** El dividendo o las recompras son insostenibles; se pagan con deuda o caja finita.")
+
     if rev_g < 0 and margin < 0 and roe < 0:
         alerts.append("🔴 **Zombie Mode:** Empresa en muerte cerebral: sin crecimiento, sin márgenes y sin rentabilidad.")
 
+    # RENDER DE ALERTAS
     if alerts:
         with st.expander("🔍 ORCA Intelligence: Diagnóstico del Analista Senior", expanded=True):
             for a in alerts:
@@ -218,8 +237,14 @@ if d:
     factor_orca = (100-max(5, (75 - qs_sheets) * 0.4 + 5))/100
     precio_compra = iv_base * factor_orca
 
-    # AUTO-REGISTRO EN BITÁCORA AL CALCULAR
-    registrar_bitacora(ticker_input, d.get('price', 0), iv_base, precio_compra, qs_sheets)
+    # --- LÓGICA DE BITÁCORA ANTI-DUPLICADOS ---
+    if "last_logged_ticker" not in st.session_state:
+        st.session_state.last_logged_ticker = None
+
+    if ticker_input != st.session_state.last_logged_ticker and iv_base > 0:
+        registrar_bitacora(ticker_input, d.get('price', 0), iv_base, precio_compra, qs_sheets)
+        st.session_state.last_logged_ticker = ticker_input
+    # ------------------------------------------
 
     qs_category = classify_qs(qs_sheets)
 
