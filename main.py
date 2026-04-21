@@ -3,12 +3,6 @@ import yfinance as yf
 import database as db
 import requests
 
-# --- NUEVA INFRAESTRUCTURA DE RED (Anti-Bloqueo) ---
-session = requests.Session()
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-})
-
 # --- FUNCIÓN CON CACHÉ (Protección de API) ---
 @st.cache_data(ttl=3600)  # Guarda los datos por 1 hora
 def fetch_market_data(ticker):
