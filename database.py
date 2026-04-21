@@ -223,6 +223,91 @@ HTM_30_DATA = {
         "mr_val": 1062.50,
         "fcf_ttm": 718.5
     },
+       # --- BLOQUE CONSUMO & LIFESTYLE (Early Morning) ---
+    "LVMUY": {
+        "name": "LVMH Moet Hennessy Louis Vuitton",
+        "fcf_yield": 5.79,
+        "eps_growth": -8.7,
+        "buyback_yield": 0.0,
+        "quality_score": 45,
+        "dcf_val": 135.14,
+        "mr_val": 104.08,
+        "fcf_ttm": 16536.0
+    },
+    "EL": {
+        "name": "Estée Lauder Companies Inc.",
+        "fcf_yield": 4.04,
+        "eps_growth": -40.7, # Recuperación tras ciclo de inventario
+        "buyback_yield": 0.24,
+        "quality_score": 26,
+        "dcf_val": 49.60,
+        "mr_val": 34.78,
+        "fcf_ttm": 1137.0
+    },
+    "ORLY": {
+        "name": "O'Reilly Automotive Inc.",
+        "fcf_yield": 2.05,
+        "eps_growth": 10,
+        "buyback_yield": 0,
+        "quality_score": 49,
+        "dcf_val": 53.71,
+        "mr_val": 34.74,
+        "fcf_ttm": 1593.0
+    },
+
+    # --- BLOQUE SALUD & BIOTECNOLOGÍA (Late Morning) ---
+    "LLY": {
+        "name": "Eli Lilly and Co.",
+        "fcf_yield": 0.73,
+        "eps_growth": 45,
+        "buyback_yield": 0.0,
+        "quality_score": 78,
+        "dcf_val": 728,
+        "mr_val": 649,
+        "fcf_ttm": 5964.0
+    },
+    "ISRG": {
+        "name": "Intuitive Surgical Inc.",
+        "fcf_yield": 1.51,
+        "eps_growth": 24,
+        "buyback_yield": 1.39,
+        "quality_score": 78,
+        "dcf_val": 377.70,
+        "mr_val": 393.12,
+        "fcf_ttm": 2491.0
+    },
+    "IDXX": {
+        "name": "IDEXX Laboratories Inc.",
+        "fcf_yield": 2.25,
+        "eps_growth": 15.7,
+        "buyback_yield": 0,
+        "quality_score": 68,
+        "dcf_val": 742.20,
+        "mr_val": 628.70,
+        "fcf_ttm": 1044.0
+    },
+    "TMO": {
+        "name": "Thermo Fisher Scientific Inc.",
+        "fcf_yield": 3.22,
+        "eps_growth": -0.5,
+        "buyback_yield": 0,
+        "quality_score": 47,
+        "dcf_val": 320.00,
+        "mr_val": 515.84,
+        "fcf_ttm": 6293.0
+    },
+
+    # --- EL CANDADO (Market Infrastructure) ---
+    "ICE": {
+        "name": "Intercontinental Exchange Inc.",
+        "fcf_yield": 4.24,
+        "eps_growth": 9.5,
+        "buyback_yield": 1.54,
+        "quality_score": 65,
+        "dcf_val": 156.0,
+        "mr_val": 128.63,
+        "fcf_ttm": 3871.0
+    },
 }
 
 def get_ticker_data(ticker):
