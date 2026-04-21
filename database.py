@@ -140,7 +140,48 @@ HTM_30_DATA = {
         "dcf_val": 562.00,
         "mr_val": 481.00,
         "fcf_ttm": 1459.0
-    }
+    },
+       # --- BLOQUE SEMICONDUCTORES & ESPECIALIZADOS (Data Refinada) ---
+    "NVDA": {
+        "name": "NVIDIA Corporation",
+        "fcf_yield": 1.92,
+        "eps_growth": 142.6,
+        "buyback_yield": 0,
+        "quality_score": 100,
+        "dcf_val": 176.70,
+        "mr_val": 191,
+        "fcf_ttm": 96676.0
+    },
+    "AVGO": {
+        "name": "Broadcom Inc.",
+        "fcf_yield": 1.53,
+        "eps_growth": 9,
+        "buyback_yield": 0.63,
+        "quality_score": 72,
+        "dcf_val": 271.24,
+        "mr_val": 220.65,
+        "fcf_ttm": 28911.0
+    },
+    "LRCX": {
+        "name": "Lam Research Corporation",
+        "fcf_yield": 1.89,
+        "eps_growth": 8.4,
+        "buyback_yield": 0,
+        "quality_score": 77,
+        "dcf_val": 221.11,
+        "mr_val": 213.63,
+        "fcf_ttm": 6216.0
+    },
+    "KLAC": {
+        "name": "KLA Corporation",
+        "fcf_yield": 1.85,
+        "eps_growth": 16.3,
+        "buyback_yield": 0,
+        "quality_score": 84,
+        "dcf_val": 1483.00,
+        "mr_val": 1672.20,
+        "fcf_ttm": 4377.0
+    },
 }
 
 def get_ticker_data(ticker):
